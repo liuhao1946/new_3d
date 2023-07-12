@@ -2,6 +2,10 @@ import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QSpacerItem, QSizePolicy
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 import time
+import bds.bds_serial as bds_ser
+
+
+global ser_obj
 
 
 class Worker(QThread):
@@ -10,9 +14,13 @@ class Worker(QThread):
 
     def run(self):
         x = 0
-
         # 在这里读取数据
         while True:
+            ser_obj.hw_read()
+
+
+
+
             # 假设我们读取到了欧拉角数据 (pitch, yaw, roll)
             pitch = 1.0
             yaw = 2.0
@@ -27,7 +35,7 @@ class Worker(QThread):
             self.quatDataReceived.emit(w, x, y, z)
 
             # 暂停一段时间模拟读取数据的过程
-            time.sleep(0.1)
+            time.sleep(0.01)
 
 
 class MyWindow(QWidget):
@@ -127,7 +135,16 @@ class MyWindow(QWidget):
         self.quatEdits[3].setText(str(z))
 
 
+def hw_error(err):
+    pass
+
+
+def hw_warn(err):
+    pass
+
+
 if __name__ == '__main__':
+    ser_obj = bds_ser.BDS_Serial(hw_error, hw_warn, char_format='hex')
     app = QApplication(sys.argv)
     ex = MyWindow()
     sys.exit(app.exec_())
