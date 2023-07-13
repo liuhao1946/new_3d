@@ -1,17 +1,107 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QSpacerItem, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QOpenGLWidget
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox
 import time
 import bds.bds_serial as bds_ser
+from OpenGL.GL import *
+from OpenGL.GLUT import *
+from OpenGL.GLU import *
+import math
+from PyQt5.QtGui import QSurfaceFormat
 
 
 global ser_obj
 
 
+class OpenGLWidget(QOpenGLWidget):
+    def __init__(self, parent=None):
+        fmt = QSurfaceFormat()
+        fmt.setSamples(4)  # Set the number of samples used for multisampling
+        QSurfaceFormat.setDefaultFormat(fmt)  # Apply the format to the widget
+
+        super(OpenGLWidget, self).__init__(parent)
+        self.angle = 0
+        self.x = 0
+        self.y = 0
+        self.z = 1
+
+    def initializeGL(self):
+        glClearColor(0.0, 0.0, 0.0, 1.0)
+        glEnable(GL_DEPTH_TEST)
+
+    def paintGL(self):
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        glLoadIdentity()
+        glTranslatef(0.0, 0.0, -10)
+        glRotatef(self.angle, self.x, self.y, self.z)
+        self.drawCube(3, 3, 0.5)
+        self.update()  # Force window to repaint
+
+    def resizeGL(self, width, height):
+        glViewport(0, 0, width, height)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(45.0, width / height, 0.1, 100.0)
+        glMatrixMode(GL_MODELVIEW)
+
+    def update_rotation(self, w, x, y, z):
+        self.angle, self.x, self.y, self.z = self.quaternion_to_angle_axis(w, x, y, z)
+
+    def quaternion_to_angle_axis(self, w, x, y, z):
+        angle = 2 * math.acos(w) * 180.0 / math.pi
+        norm = math.sqrt(x * x + y * y + z * z)
+        if norm == 0:
+            return 0, 1, 0, 0
+        return angle, x / norm, y / norm, z / norm
+
+    def drawCube(self, length, width, height):
+        half_length = length / 2
+        half_width = width / 2
+        half_height = height / 2
+
+        glBegin(GL_QUADS)
+        glColor3f(1, 0, 0)  # Red
+        glVertex3f(half_length, half_height, half_width)
+        glVertex3f(-half_length, half_height, half_width)
+        glVertex3f(-half_length, half_height, -half_width)
+        glVertex3f(half_length, half_height, -half_width)
+
+        glColor3f(0, 1, 0)  # Green
+        glVertex3f(half_length, -half_height, -half_width)
+        glVertex3f(-half_length, -half_height, -half_width)
+        glVertex3f(-half_length, -half_height, half_width)
+        glVertex3f(half_length, -half_height, half_width)
+
+        glColor3f(0, 0, 1)  # Blue
+        glVertex3f(half_length, half_height, half_width)
+        glVertex3f(-half_length, half_height, half_width)
+        glVertex3f(-half_length, -half_height, half_width)
+        glVertex3f(half_length, -half_height, half_width)
+
+        glColor3f(1, 1, 0)  # Yellow
+        glVertex3f(half_length, -half_height, -half_width)
+        glVertex3f(-half_length, -half_height, -half_width)
+        glVertex3f(-half_length, half_height, -half_width)
+        glVertex3f(half_length, half_height, -half_width)
+
+        glColor3f(1, 0, 1)  # Magenta
+        glVertex3f(-half_length, half_height, half_width)
+        glVertex3f(-half_length, half_height, -half_width)
+        glVertex3f(-half_length, -half_height, -half_width)
+        glVertex3f(-half_length, -half_height, half_width)
+
+        glColor3f(0, 1, 1)  # Cyan
+        glVertex3f(half_length, half_height, -half_width)
+        glVertex3f(half_length, half_height, half_width)
+        glVertex3f(half_length, -half_height, half_width)
+        glVertex3f(half_length, -half_height, -half_width)
+        glEnd()
+
 class Worker(QThread):
     eulerDataReceived = pyqtSignal(float, float, float)
     quatDataReceived = pyqtSignal(float, float, float, float)
+    quatDataReceived_3d = pyqtSignal(float, float, float, float)
 
     def run(self):
         quat_display_clk = 0
@@ -21,11 +111,11 @@ class Worker(QThread):
 
             xyzw = ser_obj.read_xyzw()
             if xyzw:
+                x, y, z, w = xyzw[-1]
+                self.quatDataReceived_3d.emit(w, x, y, z)
 
                 quat_display_clk += 1
                 if quat_display_clk >= 10:
-                    # 发送数据到UI界面
-                    x, y, z, w = xyzw[-1]
                     self.quatDataReceived.emit(w, x, y, z)
                     quat_display_clk = 0
 
@@ -104,21 +194,24 @@ class MyWindow(QWidget):
         grid.addWidget(QPushButton("预留"), 3, 3)
 
         # 第五行
-        grid.addWidget(QLabel(""), 4, 0, 1, 6)
+        # grid.addWidget(QLabel(""), 4, 0, 1, 6)
+        self.opengl = OpenGLWidget()
+        grid.addWidget(self.opengl, 4, 0, 1, 8)
 
         self.setLayout(grid)
-        self.setWindowTitle('My Window')
+        self.setWindowTitle('Cyweemotion 3D(www.cyweemotion.com)')
         self.show()
 
         # 新建一个10ms的精准定时器
         self.timer = QTimer()
         self.timer.timeout.connect(self.on_timer)
-        self.timer.start(10)
+        self.timer.start(100)
 
         # 创建新线程
         self.worker = Worker()
         self.worker.eulerDataReceived.connect(self.on_euler_data_received)
         self.worker.quatDataReceived.connect(self.on_quat_data_received)
+        self.worker.quatDataReceived_3d.connect(self.on_quat_data_received_3d)
         self.worker.start()
 
     def on_btn_clicked(self):
@@ -142,7 +235,13 @@ class MyWindow(QWidget):
                 QMessageBox.information(self, "错误:", str(e))
 
     def on_timer(self):
-        # 这里是定时器每10ms要执行的代码
+        import random
+        w = random.random()
+        x = random.random()
+        y = random.random()
+        z = random.random()
+        print(w, x, y, z)
+        self.opengl.update_rotation(w, x, y, z)
         pass
 
     def on_euler_data_received(self, pitch, yaw, roll):
@@ -155,6 +254,9 @@ class MyWindow(QWidget):
         self.quatEdits[1].setText('%0.6f' % x)
         self.quatEdits[2].setText('%0.6f' % y)
         self.quatEdits[3].setText('%0.6f' % z)
+
+    def on_quat_data_received_3d(self, w, x, y, z):
+        pass
 
     def closeEvent(self, event):
         # 在这里释放你的资源
