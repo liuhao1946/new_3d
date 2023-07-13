@@ -1,6 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QSpacerItem, QSizePolicy
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtWidgets import QMessageBox
 import time
 import bds.bds_serial as bds_ser
 
@@ -13,37 +14,43 @@ class Worker(QThread):
     quatDataReceived = pyqtSignal(float, float, float, float)
 
     def run(self):
-        x = 0
-        # 在这里读取数据
+        quat_display_clk = 0
+
         while True:
             ser_obj.hw_read()
 
+            xyzw = ser_obj.read_xyzw()
+            if xyzw:
 
-
-
-            # 假设我们读取到了欧拉角数据 (pitch, yaw, roll)
-            pitch = 1.0
-            yaw = 2.0
-            roll = 3.0
-            self.eulerDataReceived.emit(pitch, yaw, roll)
-
-            # 假设我们读取到了四元数数据 (w, x, y, z)
-            w = 4.0
-            x += 1.0
-            y = 6.0
-            z = 7.0
-            self.quatDataReceived.emit(w, x, y, z)
+                quat_display_clk += 1
+                if quat_display_clk >= 10:
+                    # 发送数据到UI界面
+                    x, y, z, w = xyzw[-1]
+                    self.quatDataReceived.emit(w, x, y, z)
+                    quat_display_clk = 0
 
             # 暂停一段时间模拟读取数据的过程
-            time.sleep(0.01)
+            time.sleep(0.005)
 
 
 class MyWindow(QWidget):
-    def __init__(self):
+    def __init__(self, obj):
         super().__init__()
+        self.com_des_list = []
+        self.com_name_list = []
+        self.baud_list = ['1000000', '2000000', '9600', '115200']
+        self.baud = 115200
+        self.obj = obj
+
         self.initUI()
 
     def initUI(self):
+        self.com_des_list, self.com_name_list = bds_ser.serial_find()
+        if not self.com_des_list:
+            self.com_des_list.append('')
+        if not self.com_name_list:
+            self.com_name_list.append('')
+
         self.setMinimumSize(700, 500)
         grid = QGridLayout()
 
@@ -52,14 +59,14 @@ class MyWindow(QWidget):
         self.label1.setAlignment(Qt.AlignRight)  # 设置文本右对齐
         grid.addWidget(self.label1, 0, 0)
         self.combo1 = QComboBox()
-        self.combo1.addItem("COM1")
-        self.combo1.setFixedWidth(100)
+        self.combo1.addItems(self.com_des_list)
+        self.combo1.setFixedWidth(180)
         grid.addWidget(self.combo1, 0, 1)
         self.label2 = QLabel("波特率")
         self.label2.setAlignment(Qt.AlignRight)  # 设置文本右对齐
         grid.addWidget(self.label2, 0, 2)
         self.combo2 = QComboBox()
-        self.combo2.addItem("115200")
+        self.combo2.addItems(self.baud_list)
         self.combo2.setFixedWidth(100)
         grid.addWidget(self.combo2, 0, 3)
 
@@ -91,7 +98,9 @@ class MyWindow(QWidget):
             self.quatEdits.append(edit)
 
         # 第四行的按钮一次对齐到第三行的文本输入框
-        grid.addWidget(QPushButton("复位姿态"), 3, 1)
+        self.btn_reset =QPushButton("复位姿态")
+        grid.addWidget(self.btn_reset, 3, 1)
+        self.btn_reset.setFixedWidth(100)
         grid.addWidget(QPushButton("预留"), 3, 3)
 
         # 第五行
@@ -114,10 +123,23 @@ class MyWindow(QWidget):
 
     def on_btn_clicked(self):
         if self.btn.text() == "打开串口":
-            self.btn.setText("关闭串口")
-            print(self.combo1.currentText(), self.combo2.currentText(), self.label1.text(), self.label2.text())
+            ser_num = self.com_name_list[self.com_des_list.index(self.combo1.currentText())]
+            cur_baud = int(self.combo2.currentText())
+
+            print("ser number: %s" % ser_num)
+            print("cur baud: %s" % cur_baud)
+            try:
+                self.obj.hw_open(port=ser_num, baud=cur_baud, rx_buffer_size=10240)
+                self.btn.setText("关闭串口")
+            except Exception as e:
+                QMessageBox.information(self, "错误:", str(e))
+            # print(self.combo1.currentText(), self.combo2.currentText(), self.label1.text(), self.label2.text())
         else:
-            self.btn.setText("打开串口")
+            try:
+                self.btn.setText("打开串口")
+                self.obj.hw_close()
+            except Exception as e:
+                QMessageBox.information(self, "错误:", str(e))
 
     def on_timer(self):
         # 这里是定时器每10ms要执行的代码
@@ -129,22 +151,31 @@ class MyWindow(QWidget):
         self.eulerEdits[2].setText(str(roll))
 
     def on_quat_data_received(self, w, x, y, z):
-        self.quatEdits[0].setText(str(w))
-        self.quatEdits[1].setText(str(x))
-        self.quatEdits[2].setText(str(y))
-        self.quatEdits[3].setText(str(z))
+        self.quatEdits[0].setText('%0.6f' % w)
+        self.quatEdits[1].setText('%0.6f' % x)
+        self.quatEdits[2].setText('%0.6f' % y)
+        self.quatEdits[3].setText('%0.6f' % z)
+
+    def closeEvent(self, event):
+        # 在这里释放你的资源
+        print("Window is closing...")
+
+        if ser_obj.hw_is_open():
+            ser_obj.hw_close()
+        # 然后调用父类的 closeEvent 方法，以确保窗口被正确关闭
+        super().closeEvent(event)
 
 
 def hw_error(err):
-    pass
+    print(err)
 
 
 def hw_warn(err):
-    pass
+    print(err)
 
 
 if __name__ == '__main__':
     ser_obj = bds_ser.BDS_Serial(hw_error, hw_warn, char_format='hex')
     app = QApplication(sys.argv)
-    ex = MyWindow()
+    ex = MyWindow(ser_obj)
     sys.exit(app.exec_())

@@ -42,7 +42,6 @@ class BDS_Serial(HardWareBase):
 
     def hw_open(self, port='', baud=115200, rx_buffer_size=10240):
         try:
-            # print(port,baud)
             self.hw_para_init()
             self.ser.port = port
             self.ser.baudrate = baud
@@ -51,8 +50,7 @@ class BDS_Serial(HardWareBase):
             self.ser.reset_input_buffer()
             self.ser_is_start = True
         except Exception as e:
-            self.err_cb('%s\n' % e)
-            print(e)
+            raise ValueError(str(e))
 
     def hw_close(self):
         self.ser_is_start = False

@@ -1,10 +1,79 @@
 import re
 import threading
 from queue import Queue
-from datetime import datetime
-import binascii
+import queue
+import struct
+# from datetime import datetime
+# import binascii
 
 thread_lock = threading.Lock()
+
+
+class PacketParser:
+    def __init__(self):
+        self.buffer = b''
+        self.last_pack_ser = None
+        self.last_packet = None
+
+    def add_data(self, data):
+        self.buffer += data
+        while True:
+            packet = self.parse_packet()
+            if packet is None:
+                break
+            self.check_packet_loss(packet)
+            self.last_packet = packet
+            yield packet
+
+    def parse_packet(self):
+        # If the buffer doesn't start with the correct header, discard data until it does
+        while self.buffer[:4] != b'\xAA\xAA\xAA\xAA' and len(self.buffer) >= 4:
+            self.buffer = self.buffer[1:]
+
+        # If we don't have enough data for a complete packet, return None
+        if len(self.buffer) < 4 + 1 + 2 + 2 + 2:  # size of each section of the packet
+            return None
+
+        # Parse the packet
+        head = list(self.buffer[:4])
+        trans_direction, pack_ser, payloads_len, event_type = struct.unpack('<B H H H', self.buffer[4:4 + 1 + 2 + 2 + 2])
+
+        # Check if we have all the user data
+        if len(self.buffer) < 4 + 1 + 2 + 2 + payloads_len + 2:  # size of each section of the packet and user data
+            return None
+
+        user_data = list(self.buffer[4 + 1 + 2 + 2 + 2:4 + 1 + 2 + 2 + payloads_len])
+
+        sum_check = struct.unpack('<H', self.buffer[4 + 1 + 2 + 2 + payloads_len:4 + 1 + 2 + 2 + payloads_len + 2])[0]
+
+        # Validate checksum
+        if sum_check != sum(self.buffer[0:4 + 1 + 2 + 2 + payloads_len]) & 0xFFFF:
+            # Checksum failed; discard this packet and look for the next one
+            self.buffer = self.buffer[1:]
+            return None
+
+        # Remove this packet from the buffer
+        self.buffer = self.buffer[4 + 1 + 2 + 2 + payloads_len + 2:]
+
+        return {
+            'head': head,
+            'trans_direction': trans_direction,
+            'pack_ser': pack_ser,
+            'payloads_len': payloads_len,
+            'event_type': event_type,
+            'user_data': user_data,
+            'sum': sum_check,
+        }
+
+    def check_packet_loss(self, packet):
+        if self.last_pack_ser is not None:
+            expected_pack_ser = (self.last_pack_ser + 1) % 0x10000  # We use modulo operation to handle overflow
+            if packet['pack_ser'] != expected_pack_ser:
+                print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet['pack_ser']}")
+                print(f"Last packet: {self.last_packet}")
+                print(f"Current packet: {packet}")
+
+        self.last_pack_ser = packet['pack_ser']
 
 
 def find_key(text, key):
@@ -32,14 +101,20 @@ class HardWareBase:
     def __init__(self, err_cb, warn_cb, tag_detect_timeout_s, read_rtt_data_interval_s, char_format, **kwargs):
         self.err_cb = err_cb
         self.warn_cb = warn_cb
-        self.raw_data_save = False
-        self.timestamp_open = False
-        self.rx_str = ''
         self.char_format = char_format
-        self.data_queue = Queue()
-        self.M_cb = []
-        self.thread_run_interval_s = read_rtt_data_interval_s
-        self.tag_detect_timeout = self.tag_detect_timeout_init = tag_detect_timeout_s / self.thread_run_interval_s
+
+        self.xyzw_q = Queue()
+        self.euler_q = Queue()
+
+        self.parser = PacketParser()
+
+        self.downsample_rate = 10
+        self.packet_counter = 0
+
+        self.evt_cb = {
+                0x0505: self.__fetch_xyzw,
+                0x0405: self.__fetch_euler,
+              }
 
     def hw_open(self, **kwargs):
         pass
@@ -56,57 +131,54 @@ class HardWareBase:
     def hw_data_handle(self, s1):
         pass
 
+    def __fetch_euler(self, data):
+        bytes_data = bytes(data)
+
+        # 将每4个字节转换为一个浮点数
+        yaw = struct.unpack('<f', bytes_data[0:4])[0]
+        pitch = struct.unpack('<f', bytes_data[4:8])[0]
+        roll = struct.unpack('<f', bytes_data[8:12])[0]
+        self.euler_q.put([yaw, pitch, roll])
+
+    def __fetch_xyzw(self, data):
+        bytes_data = bytes(data)
+
+        # 将每4个字节转换为一个浮点数
+        x = struct.unpack('<f', bytes_data[0:4])[0]
+        y = struct.unpack('<f', bytes_data[4:8])[0]
+        z = struct.unpack('<f', bytes_data[8:12])[0]
+        w = struct.unpack('<f', bytes_data[12:16])[0]
+
+        self.xyzw_q.put([x, y, z, w])
+
     def hw_data_hex_handle(self, byte_stream):
         if byte_stream != b'':
-            # 解码hex
-            # 以10ms发送
-            # 分包与组包
-            # 
-            pass
+            for packet in self.parser.add_data(byte_stream):
+                self.packet_counter += 1
+                if self.packet_counter == self.downsample_rate:
+                    self.packet_counter = 0
+                    self.evt_cb[packet['event_type']](packet['user_data'])
 
     def hw_write(self, data):
         pass
 
     def hw_para_init(self):
-        self.rx_str = ''
-        self.data_queue.queue.clear()
-
-    def get_raw_data_state(self):
-        return self.raw_data_save
-
-    def reg_dlog_M_callback(self, cb):
-        self.M_cb.append(cb)
-
-    def dlog_pack_handle(self, sub):
-        try:
-            thread_lock.acquire()
-            raw_data = find_group(sub, 'M')
-
-            if len(raw_data) >= 3:
-                for _, cb in enumerate(self.M_cb):
-                    # print(raw_data, len(self.M_cb))
-                    cb(raw_data)
-        except Exception as e:
-            self.warn_cb('re data error:[%s]\n' % e)
-        finally:
-            thread_lock.release()
+        self.packet_counter = 0
 
     def get_hw_serial_number(self):
         pass
 
-    def open_timestamp(self):
-        self.timestamp_open = True
+    def read_euler(self):
+        pass
 
-    def close_timestamp(self):
-        self.timestamp_open = False
-
-    def get_read_data_time_interval_s(self):
-        return self.thread_run_interval_s
-
-    def read_data_queue(self, data):
-        q_size = self.data_queue.qsize()
-        for _ in range(0, q_size):
-            data.append(self.data_queue.get())
+    def read_xyzw(self):
+        data_list = []
+        while not self.xyzw_q.empty():
+            try:
+                data_list.append(self.xyzw_q.get())
+            except queue.Empty:
+                pass
+        return data_list
 
 
 if __name__ == '__main__':
