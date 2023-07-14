@@ -70,8 +70,8 @@ class PacketParser:
             expected_pack_ser = (self.last_pack_ser + 1) % 0x10000  # We use modulo operation to handle overflow
             if packet['pack_ser'] != expected_pack_ser:
                 print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet['pack_ser']}")
-                print(f"Last packet: {self.last_packet}")
-                print(f"Current packet: {packet}")
+                # print(f"Last packet: {self.last_packet}")
+                # print(f"Current packet: {packet}")
 
         self.last_pack_ser = packet['pack_ser']
 

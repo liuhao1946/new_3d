@@ -21,16 +21,17 @@ class OpenGLWidget(QOpenGLWidget):
         self.z = 1
 
     def initializeGL(self):
-        glEnable(GL_MULTISAMPLE)  # Enable multisampling
         glClearColor(0.0, 0.0, 0.0, 1.0)
         glEnable(GL_DEPTH_TEST)
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
-        glTranslatef(0.0, 0.0, -10)
+        glTranslatef(0.0, 0.0, -12)
         glRotatef(self.angle, self.x, self.y, self.z)
-        self.drawCube(3, 3, 0.3)
+
+        self.drawCube(3, 3, 0.5)
+        self.drawAxes(3, 2)
         self.update()  # Force window to repaint
 
     def resizeGL(self, width, height):
@@ -50,6 +51,18 @@ class OpenGLWidget(QOpenGLWidget):
             return 0, 1, 0, 0
         return angle, x / norm, y / norm, z / norm
 
+    def normalize_rgb(self, red, green, blue):
+        """
+        Normalize RGB colors to a [0, 1] scale for OpenGL.
+
+        :param red: Red component of the color (0-255).
+        :param green: Green component of the color (0-255).
+        :param blue: Blue component of the color (0-255).
+        :return: Tuple of (red, green, blue) normalized to [0, 1].
+        """
+
+        return red / 255.0, green / 255.0, blue / 255.0
+
     def drawCube(self, length, width, height):
         half_length = length / 2
         half_width = width / 2
@@ -68,7 +81,8 @@ class OpenGLWidget(QOpenGLWidget):
         glVertex3f(-half_length, -half_height, half_width)
         glVertex3f(half_length, -half_height, half_width)
 
-        glColor3f(0, 0, 1)  # Blue
+        r, g, b = self.normalize_rgb(0xee, 0x63, 0x63)
+        glColor3f(r, g, b)  # Blue
         glVertex3f(half_length, half_height, half_width)
         glVertex3f(-half_length, half_height, half_width)
         glVertex3f(-half_length, -half_height, half_width)
@@ -91,6 +105,74 @@ class OpenGLWidget(QOpenGLWidget):
         glVertex3f(half_length, half_height, half_width)
         glVertex3f(half_length, -half_height, half_width)
         glVertex3f(half_length, -half_height, -half_width)
+        glEnd()
+
+    def drawAxes(self, axisLength, lineWidth):
+        '''
+        Draw 3D axes
+        axisLength - length of the axes
+        arrowSize - size of the arrow heads
+        lineWidth - width of the axes lines
+        '''
+        arrowSize = 0.3
+
+        # Set the line width
+        glLineWidth(lineWidth)
+
+        # Draw the X axis in red
+        glColor3f(1, 0, 0)
+        glBegin(GL_LINES)
+        glVertex3f(0, 0, 0)
+        glVertex3f(axisLength, 0, 0)
+        glEnd()
+        self.drawArrowHead(axisLength, 0, 0, arrowSize, 1, 0, 0)
+
+        # Draw the Y axis in green
+        glColor3f(0, 1, 0)
+        glBegin(GL_LINES)
+        glVertex3f(0, 0, 0)
+        glVertex3f(0, axisLength, 0)
+        glEnd()
+        self.drawArrowHead(0, axisLength, 0, arrowSize, 0, 1, 0)
+
+        # Draw the Z axis in blue
+        glColor3f(0, 0, 1)
+        glBegin(GL_LINES)
+        glVertex3f(0, 0, 0)
+        glVertex3f(0, 0, axisLength)
+        glEnd()
+        self.drawArrowHead(0, 0, axisLength, arrowSize, 0, 0, 1)
+
+    def drawArrowHead(self, x, y, z, size, dx, dy, dz):
+        '''
+        Draw an arrow head
+        x, y, z - position of the arrow head
+        size - size of the arrow head
+        dx, dy, dz - direction of the arrow
+        '''
+
+        # The arrow head is a set of lines that extend from the end of the axis
+        glBegin(GL_LINES)
+
+        if dx:
+            # For X-axis, arrow head is in YZ plane
+            glVertex3f(x-size, y + size, z)
+            glVertex3f(x, y, z)
+            glVertex3f(x-size, y - size, z)
+            glVertex3f(x, y, z)
+        elif dy:
+            # For Y-axis, arrow head is in XZ plane
+            glVertex3f(x + size, y - size, z)
+            glVertex3f(x, y, z)
+            glVertex3f(x - size, y - size, z)
+            glVertex3f(x, y, z)
+        elif dz:
+            # For Z-axis, arrow head is in XY plane
+            glVertex3f(x + size, y, z - size)
+            glVertex3f(x, y, z)
+            glVertex3f(x - size, y, z - size)
+            glVertex3f(x, y, z)
+
         glEnd()
 
 
