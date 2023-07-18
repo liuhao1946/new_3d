@@ -16,27 +16,37 @@ global stop_tx_flag
 def tx_hex_data(win, ser_obj):
     head = [0xAA, 0XAA, 0XAA, 0XAA]
     direct = [0x01]
-    # serial = [0x00, 0x00]
-    data_len = [0x12, 0x00]
-    sid = [0x05, 0x05]
-    user_data = [0xD6, 0x02, 0xC1, 0x3B, 0x29, 0xA5, 0x86, 0x3C, 0x0C, 0x0F, 0x7F, 0xBF, 0xE2, 0xC6, 0xAB, 0x3D]
-    # data_sum = [0x00, 0x00]
+    # 四元数
+    q_data_len = [0x12, 0x00]
+    q_sid = [0x05, 0x05]
+    q_user_data = [0xD6, 0x02, 0xC1, 0x3B, 0x29, 0xA5, 0x86, 0x3C, 0x0C, 0x0F, 0x7F, 0xBF, 0xE2, 0xC6, 0xAB, 0x3D]
+    # 欧拉角
+    e_data_len = [0x0e, 0x00]
+    e_sid = [0x05, 0x04]
+    e_user_data = [0x69, 0x85, 0xC6, 0xC2, 0xEA, 0xBC, 0xE5, 0xBF, 0xEB, 0xAB, 0x5C, 0x3F]
 
     serial_num = 0
     while True:
         thread_lock.acquire()
 
-        serial_num += 1
-        if serial_num > 65535:
-            serial_num = 0
-
         try:
+            serial_num += 1
+            if serial_num > 65535:
+                serial_num = 0
+
             serial = list(struct.pack("<H", serial_num))
-            data = head + direct + serial + data_len + sid + user_data
+            data = head + direct + serial + q_data_len + q_sid + q_user_data
+            data_sum = list(struct.pack("<H", sum(data)))
+            ser_obj.hw_write(data+data_sum)
+
+            serial_num += 1
+            if serial_num > 65535:
+                serial_num = 0
+            serial = list(struct.pack("<H", serial_num))
+            data = head + direct + serial + e_data_len + e_sid + e_user_data
             data_sum = list(struct.pack("<H", sum(data)))
 
-            # print(data + data_sum)
-            ser_obj.hw_write(data+data_sum)
+            ser_obj.hw_write(data + data_sum)
         except Exception as e:
             print(e)
 
@@ -51,7 +61,7 @@ def ser_connect(win, obj, com, baud):
         try:
             cur_com_name = com
             cur_baud = baud
-            obj.hw_open(port=cur_com_name, baud=cur_baud, rx_buffer_size=10240)
+            obj.hw_open(port=cur_com_name, baud=cur_baud, rx_buffer_size=10240*3)
             if obj.hw_is_open():
                 win['ser_connect'].update('关闭串口', button_color=('grey0', 'green4'))
         except Exception as e:

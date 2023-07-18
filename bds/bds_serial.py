@@ -110,7 +110,10 @@ class BDS_Serial(HardWareBase):
         return self.ser.is_open
 
     def hw_write(self, data):
-        self.ser.write(list_to_bytes(data))
+        if self.ser.is_open:
+            self.ser.write(list_to_bytes(data))
+        else:
+            print('串口没有打开')
 
     def hw_read(self):
         try:

@@ -103,17 +103,23 @@ class HardWareBase:
         self.warn_cb = warn_cb
         self.char_format = char_format
 
+        self.a_cal_state = 0
+        self.g_cal_state = 0
+        self.hw_mag_cal_state = 0
+        self.sf_mag_cal_state = 0
+
         self.xyzw_q = Queue()
         self.euler_q = Queue()
 
         self.parser = PacketParser()
 
-        self.downsample_rate = 10
+        self.downsample_rate = 1
         self.packet_counter = 0
 
         self.evt_cb = {
                 0x0505: self.__fetch_xyzw,
                 0x0405: self.__fetch_euler,
+                0x0403: self.__fetch_cal_inf,
               }
 
     def hw_open(self, **kwargs):
@@ -130,6 +136,12 @@ class HardWareBase:
 
     def hw_data_handle(self, s1):
         pass
+
+    def __fetch_cal_inf(self, data):
+        self.a_cal_state = data[0] & 0x0f
+        self.g_cal_state = (data[0] & 0xf0) >> 4
+        self.hw_mag_cal_state = data[1] & 0x0f
+        self.sf_mag_cal_state = (data[1] & 0x0f) >> 4
 
     def __fetch_euler(self, data):
         bytes_data = bytes(data)
@@ -185,6 +197,18 @@ class HardWareBase:
             except queue.Empty:
                 pass
         return data_list
+
+    def read_a_cal_state(self):
+        return self.a_cal_state
+
+    def read_g_cal_state(self):
+        return self.g_cal_state
+
+    def read_hw_mag_cal_state(self):
+        return self.hw_mag_cal_state
+
+    def read_sf_mag_cal_state(self):
+        return self.sf_mag_cal_state
 
 
 if __name__ == '__main__':
