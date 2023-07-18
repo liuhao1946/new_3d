@@ -116,6 +116,10 @@ class OpenGLWidget(QOpenGLWidget):
         '''
         arrowSize = 0.3
 
+        # 开启线条抗锯齿
+        glEnable(GL_LINE_SMOOTH)
+        glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
+
         # Set the line width
         glLineWidth(lineWidth)
 
@@ -126,6 +130,7 @@ class OpenGLWidget(QOpenGLWidget):
         glVertex3f(axisLength, 0, 0)
         glEnd()
         self.drawArrowHead(axisLength, 0, 0, arrowSize, 1, 0, 0)
+        self.renderText3D(axisLength + 0.2, 0, 0, "X")  # 添加这一行
 
         # Draw the Y axis in green
         glColor3f(0, 1, 0)
@@ -134,6 +139,7 @@ class OpenGLWidget(QOpenGLWidget):
         glVertex3f(0, axisLength, 0)
         glEnd()
         self.drawArrowHead(0, axisLength, 0, arrowSize, 0, 1, 0)
+        self.renderText3D(0, axisLength + 0.2, 0, "Y")  # 添加这一行
 
         # Draw the Z axis in blue
         glColor3f(0, 0, 1)
@@ -142,6 +148,9 @@ class OpenGLWidget(QOpenGLWidget):
         glVertex3f(0, 0, axisLength)
         glEnd()
         self.drawArrowHead(0, 0, axisLength, arrowSize, 0, 0, 1)
+        self.renderText3D(0, 0, axisLength + 0.2, "Z")  # 添加这一行
+
+        glDisable(GL_LINE_SMOOTH)
 
     def drawArrowHead(self, x, y, z, size, dx, dy, dz):
         '''

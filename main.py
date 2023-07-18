@@ -1,255 +1,14 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QOpenGLWidget
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QByteArray
 from PyQt5.QtWidgets import QMessageBox
 import time
 import bds.bds_serial as bds_ser
-from OpenGL.GL import *
-from OpenGL.GLUT import *
-from OpenGL.GLU import *
-import math
-from PyQt5.QtGui import QSurfaceFormat
-
+from PyQt5.QtGui import QPixmap, QIcon, QFont
+import bds.bds_3d as bds_3d
+import json
 
 global ser_obj
-
-
-class OpenGLWidget(QOpenGLWidget):
-    def __init__(self, parent=None):
-        fmt = QSurfaceFormat()
-        fmt.setSamples(4)  # Set the number of samples used for multisampling
-        QSurfaceFormat.setDefaultFormat(fmt)  # Apply the format to the widget
-
-        super(OpenGLWidget, self).__init__(parent)
-        self.angle = 0
-        self.x = 0
-        self.y = 0
-        self.z = 1
-
-        # Initialize the base and current quaternions as unit quaternions
-        self.base_quaternion = [1, 0, 0, 0]
-        self.current_quaternion = [1, 0, 0, 0]
-
-    def initializeGL(self):
-        glClearColor(0.0, 0.0, 0.0, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def paintGL(self):
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        glLoadIdentity()
-        glTranslatef(0.0, 0.0, -10)
-        glRotatef(-90, 1, 0, 0)
-        glRotatef(self.angle, self.x, self.y, self.z)
-        self.drawAxes(3, 3)  # 在这里调用刚才添加的函数以绘制坐标轴
-        self.drawCube(3, 0.5, 3)
-        self.update()  # Force window to repaint
-
-    def resizeGL(self, width, height):
-        glViewport(0, 0, width, height)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45.0, width / height, 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)
-
-    def quaternion_to_angle_axis(self, w, x, y, z):
-        angle = 2 * math.acos(w) * 180.0 / math.pi
-        norm = math.sqrt(x * x + y * y + z * z)
-        if norm == 0:
-            return 0, 1, 0, 0
-        return angle, x / norm, y / norm, z / norm
-
-    def drawCube(self, length, width, height):
-        half_length = length / 2
-        half_width = width / 2
-        half_height = height / 2
-
-        glBegin(GL_QUADS)
-        glColor3f(1, 0, 0)  # Red
-        glVertex3f(half_length, half_height, half_width)
-        glVertex3f(-half_length, half_height, half_width)
-        glVertex3f(-half_length, half_height, -half_width)
-        glVertex3f(half_length, half_height, -half_width)
-
-        glColor3f(0, 1, 0)  # Green
-        glVertex3f(half_length, -half_height, -half_width)
-        glVertex3f(-half_length, -half_height, -half_width)
-        glVertex3f(-half_length, -half_height, half_width)
-        glVertex3f(half_length, -half_height, half_width)
-
-        r, g, b = self.normalize_rgb(0xee, 0x63, 0x63)
-        glColor3f(r, g, b)  # Blue
-        glVertex3f(half_length, half_height, half_width)
-        glVertex3f(-half_length, half_height, half_width)
-        glVertex3f(-half_length, -half_height, half_width)
-        glVertex3f(half_length, -half_height, half_width)
-
-        glColor3f(1, 1, 0)  # Yellow
-        glVertex3f(half_length, -half_height, -half_width)
-        glVertex3f(-half_length, -half_height, -half_width)
-        glVertex3f(-half_length, half_height, -half_width)
-        glVertex3f(half_length, half_height, -half_width)
-
-        glColor3f(1, 0, 1)  # Magenta
-        glVertex3f(-half_length, half_height, half_width)
-        glVertex3f(-half_length, half_height, -half_width)
-        glVertex3f(-half_length, -half_height, -half_width)
-        glVertex3f(-half_length, -half_height, half_width)
-
-        glColor3f(0, 1, 1)  # Cyan
-        glVertex3f(half_length, half_height, -half_width)
-        glVertex3f(half_length, half_height, half_width)
-        glVertex3f(half_length, -half_height, half_width)
-        glVertex3f(half_length, -half_height, -half_width)
-        glEnd()
-
-    def normalize_rgb(self, red, green, blue):
-        """
-        Normalize RGB colors to a [0, 1] scale for OpenGL.
-
-        :param red: Red component of the color (0-255).
-        :param green: Green component of the color (0-255).
-        :param blue: Blue component of the color (0-255).
-        :return: Tuple of (red, green, blue) normalized to [0, 1].
-        """
-
-        return red / 255.0, green / 255.0, blue / 255.0
-
-    def drawAxes(self, axisLength, lineWidth):
-        '''
-        Draw 3D axes
-        axisLength - length of the axes
-        arrowSize - size of the arrow heads
-        lineWidth - width of the axes lines
-        '''
-        arrowSize = 0.3
-
-        # Set the line width
-        glLineWidth(lineWidth)
-
-        # Draw the X axis in red
-        glColor3f(1, 0, 0)
-        glBegin(GL_LINES)
-        glVertex3f(0, 0, 0)
-        glVertex3f(axisLength, 0, 0)
-        glEnd()
-        self.drawArrowHead(axisLength, 0, 0, arrowSize, 1, 0, 0)
-
-        # Draw the Y axis in green
-        glColor3f(0, 1, 0)
-        glBegin(GL_LINES)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, axisLength, 0)
-        glEnd()
-        self.drawArrowHead(0, axisLength, 0, arrowSize, 0, 1, 0)
-
-        # Draw the Z axis in blue
-        glColor3f(0, 0, 1)
-        glBegin(GL_LINES)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, 0, axisLength)
-        glEnd()
-        self.drawArrowHead(0, 0, axisLength, arrowSize, 0, 0, 1)
-
-    def drawArrowHead(self, x, y, z, size, dx, dy, dz):
-        '''
-        Draw an arrow head
-        x, y, z - position of the arrow head
-        size - size of the arrow head
-        dx, dy, dz - direction of the arrow
-        '''
-
-        # The arrow head is a set of lines that extend from the end of the axis
-        glBegin(GL_LINES)
-
-        if dx:
-            # For X-axis, arrow head is in YZ plane
-            glVertex3f(x-size, y, z + size)
-            glVertex3f(x, y, z)
-            glVertex3f(x-size, y, z - size)
-            glVertex3f(x, y, z)
-        elif dy:
-            # For Y-axis, arrow head is in XZ plane
-            glVertex3f(x + size, y - size, z)
-            glVertex3f(x, y, z)
-            glVertex3f(x - size, y - size, z)
-            glVertex3f(x, y, z)
-        elif dz:
-            # For Z-axis, arrow head is in XY plane
-            glVertex3f(x + size, y, z - size)
-            glVertex3f(x, y, z)
-            glVertex3f(x - size, y, z - size)
-            glVertex3f(x, y, z)
-
-        glEnd()
-
-    def quaternion_to_euler(self, w, x, y, z):
-        """
-        Convert a quaternion into euler angles (roll, pitch, yaw)
-        roll is rotation around x in radians (counterclockwise)
-        pitch is rotation around y in radians (counterclockwise)
-        yaw is rotation around z in radians (counterclockwise)
-        """
-        t0 = +2.0 * (w * x + y * z)
-        t1 = +1.0 - 2.0 * (x * x + y * y)
-        roll_x = math.atan2(t0, t1)
-
-        t2 = +2.0 * (w * y - z * x)
-        t2 = +1.0 if t2 > +1.0 else t2
-        t2 = -1.0 if t2 < -1.0 else t2
-        pitch_y = math.asin(t2)
-
-        t3 = +2.0 * (w * z + x * y)
-        t4 = +1.0 - 2.0 * (y * y + z * z)
-        yaw_z = math.atan2(t3, t4)
-
-        return roll_x, pitch_y, yaw_z  # in radians
-
-    def radians_to_degrees(self, radians):
-        """
-        Convert radians to degrees.
-        """
-        return radians * 180 / math.pi
-
-    def store_current_pose(self):
-        """
-        Store the current pose as the base quaternion.
-        """
-        self.base_quaternion = self.quaternion_inverse(self.current_quaternion)
-
-    def rotate_relative_to_base(self, w, x, y, z):
-        """
-        Rotate the object relative to the stored base pose.
-        The input parameters w, x, y, z represent a quaternion.
-        """
-
-        # Compute the new rotation as the product of the inverse of the base quaternion and the input quaternion
-        new_rotation = self.quaternion_multiply(self.base_quaternion, [w, x, y, z])
-        # Update the current quaternion and the rotation parameters for the object
-        self.current_quaternion = [w, x, y, z]
-        self.angle, self.x, self.y, self.z = self.quaternion_to_angle_axis(*new_rotation)
-
-    def quaternion_inverse(self, q):
-        """
-        Compute the inverse of a quaternion.
-        """
-        w, x, y, z = q
-        norm = w**2 + x**2 + y**2 + z**2
-        return [w/norm, -x/norm, -y/norm, -z/norm]
-
-    def quaternion_multiply(self, q1, q2):
-        """
-        Compute the product of two quaternions.
-        """
-        w1, x1, y1, z1 = q1
-        w2, x2, y2, z2 = q2
-        w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-        x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-        y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
-        z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
-
-        # normalize the quaternion
-        norm = (w ** 2 + x ** 2 + y ** 2 + z ** 2) ** 0.5
-        return [w / norm, x / norm, y / norm, z / norm]
 
 
 class Worker(QThread):
@@ -264,6 +23,7 @@ class Worker(QThread):
             ser_obj.hw_read()
 
             xyzw = ser_obj.read_xyzw()
+            euler = ser_obj.read_euler()
             if xyzw:
                 x, y, z, w = xyzw[-1]
                 self.quatDataReceived_3d.emit(w, x, y, z)
@@ -273,6 +33,12 @@ class Worker(QThread):
                     self.quatDataReceived.emit(w, x, y, z)
                     quat_display_clk = 0
 
+            if euler:
+                # rx: yaw-euler[0], pitch-euler[1], roll-euler[2]
+                # ui: pitch, yaw, roll
+                # self.on_euler_data_received(euler[1], euler[0], euler[2])
+                pass
+
             # 暂停一段时间模拟读取数据的过程
             time.sleep(0.005)
 
@@ -280,13 +46,27 @@ class Worker(QThread):
 class MyWindow(QWidget):
     def __init__(self, obj):
         super().__init__()
+
+        # 读取json配置文件
+        with open('config.json', 'r') as f:
+            self.js_cfg = json.load(f)
         self.com_des_list = []
         self.com_name_list = []
-        self.baud_list = ['1000000', '2000000', '9600', '115200']
+        self.baud_list = self.js_cfg['ser_baud']
         self.baud = 115200
         self.obj = obj
+        self.ser_hot_plug_timer = 0
 
+        exe_icon = b'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAA99JREFUaEPtmVtIFGEUx/9n1m72FIRQFAnZbSN0VyM0o8DsspuFuK4+9ZR0oZforQcffCvwJXqICgoqUFtSLJcgDKMQ19Cxi2ZGdLGHKHpJK5FmTnyzKXuZdWZ3Z6yN/UAGnO875/8758y3M+cjZPigDNePLMDfzqClGWAG4V6RDwrtgEQbwFyoARI9hcqv4OBH2DcUIAJbBW4JAHcVbwGrtSD4AGwyEPcSjABIukXegefpgqQMwG3OhVi60KeJZqpOSQhxuwbzfTpA/pHpVGwkDcCdxW44VBFp8bcuFac6a14DCECRAnRwYDAZm6YA+E5x7qxoRlUyDpKeS7gzC1M18MNovSEAB12nwTgJIN/ImMX334FwgTxy81x2EwJw0OUEcB6MCouFJWeO0A2H0kB7n73VW6gL8Ed8Gxibk/Nm02xCDxzKAdr77HusB32ALtcTACU2yUnV7BXyyg2GABx014G5JVUvtq5TsZuq5O5IH3EZ4C73XYC9kZNGxgn1zRLE9UAJ40ilql2tHIFewrUHEu7JBOdqRstpVbtGDUIneeRDBgCuVwDWR056OEyoaHRE2VqxDGjYo8Jfxti4KjWYobdCNKH1sYQv36K1djcp2Lk5zu4YeeUNcwME3T/BvDg2uvXNDogo6Q2RjdrtKqq3MXIXzZ2XySngeo+k2RKB0Ru+MpEBJf4W0RR5BpcYZSBhOEXE2kOEjj7C8Hi8c5EV/x+Qcme0GSFWiA70xkdbCMrPA3ylKmrKGFsLEmeUvHKUY51nwGWqHjr7BYyEjhBh4md8sNavZJQUAIsXMPrGSHt+9IbHzfCVhYUvNcieWG8ZwIyYj1+BjpCE9r7EJRErfE0eo7aUDaOtB2w5QKST3tFwid3uI7z/rB/xs4dVHNunmor2vAPE7lxnbkgIjYVBVi8HLp1QUFloqkIT7gS2ZiDWa05Nzuy/bp5SUFeennhbnoFEoXrxgVB0KvzbIbbWT1d/GW6xc2/A4bvzloHL9yUcvyhpTkXkRQasGPMG0NQmoak1DNBYp6LRr1qhf/4ykAVIkK9sCZkt5GwJpVFC4tUs7nXabORn5tmUgSnyyoav0y8BbExWcOx8mwBGyStHtS5NfVKmAmMLgKlPSos+6m0BMPNRL6LNFrRVbAAw11bRAMJdubQaW5GNgP5zCtxr03gTZX6MH9P7yT8yGVvOtrYWB98QJqag110w/1iJ1iKko+QZeKO36P9t7kbSZnR7PTZtGXnAoVd7GXvEpAuTiYd8uiAzx6yqtAvEztnzBcIwmEYgqT3/5DGr+T3R+pmG26j1Lq21mAWwNp7JW/sNV5joQICi7RQAAAAASUVORK5CYII='
+
+        self.set_exe_icon(exe_icon)
         self.initUI()
+
+    def set_exe_icon(self, exe_icon):
+        ba = QByteArray.fromBase64(exe_icon)
+        pixmap = QPixmap()
+        pixmap.loadFromData(ba, "PNG")
+        self.setWindowIcon(QIcon(pixmap))
 
     def initUI(self):
         self.com_des_list, self.com_name_list = bds_ser.serial_find()
@@ -295,22 +75,29 @@ class MyWindow(QWidget):
         if not self.com_name_list:
             self.com_name_list.append('')
 
-        self.setMinimumSize(700, 500)
+        self.setMinimumSize(800, 600)
         grid = QGridLayout()
 
+        font = QFont("Arial", 11)
+        font.setBold(True)
         # 第一行
-        self.label1 = QLabel("串口选择")
-        self.label1.setAlignment(Qt.AlignRight)  # 设置文本右对齐
+        self.label1 = QLabel("COM")
+        self.label1.setAlignment(Qt.AlignRight | Qt.AlignVCenter)  # 设置文本右对齐
+        self.label1.setFont(font)
         grid.addWidget(self.label1, 0, 0)
+
         self.combo1 = QComboBox()
         self.combo1.addItems(self.com_des_list)
         self.combo1.setFixedWidth(180)
         grid.addWidget(self.combo1, 0, 1)
+
         self.label2 = QLabel("波特率")
-        self.label2.setAlignment(Qt.AlignRight)  # 设置文本右对齐
+        self.label2.setAlignment(Qt.AlignRight | Qt.AlignVCenter)  # 设置文本右对齐
+        self.label2.setFont(font)
         grid.addWidget(self.label2, 0, 2)
+
         self.combo2 = QComboBox()
-        self.combo2.addItems(self.baud_list)
+        self.combo2.addItems([str(v) for v in self.baud_list])
         self.combo2.setFixedWidth(100)
         grid.addWidget(self.combo2, 0, 3)
 
@@ -321,10 +108,13 @@ class MyWindow(QWidget):
 
         # 第二行
         self.eulerEdits = []
-        for i, label in enumerate(["pitch", "yaw", "roll"]):
+        for i, label in enumerate(["pitch", "yaw", "roll", "mag_cal"]):
+
             lbl = QLabel(label)
-            lbl.setAlignment(Qt.AlignRight)  # 设置文本右对齐
+            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            lbl.setFont(font)
             grid.addWidget(lbl, 1, i*2)
+
             edit = QLineEdit("0.0")
             edit.setFixedWidth(100)
             grid.addWidget(edit, 1, i*2+1)
@@ -333,9 +123,12 @@ class MyWindow(QWidget):
         # 第三行
         self.quatEdits = []
         for i, label in enumerate(["w", "x", "y", "z"]):
+
             lbl = QLabel(label)
-            lbl.setAlignment(Qt.AlignRight)  # 设置文本右对齐
+            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            lbl.setFont(font)
             grid.addWidget(lbl, 2, i*2)
+
             edit = QLineEdit("0.0")
             edit.setFixedWidth(100)
             grid.addWidget(edit, 2, i*2+1)
@@ -345,23 +138,24 @@ class MyWindow(QWidget):
         self.btn_reset =QPushButton("复位姿态")
         grid.addWidget(self.btn_reset, 3, 1)
         self.btn_reset.clicked.connect(self.on_btn_reset_clicked)
-
         self.btn_reset.setFixedWidth(100)
-        grid.addWidget(QPushButton("预留"), 3, 3)
+
+        # grid.addWidget(QPushButton("预留"), 3, 3)
 
         # 第五行
         # grid.addWidget(QLabel(""), 4, 0, 1, 6)
-        self.opengl = OpenGLWidget()
+        self.opengl = bds_3d.OpenGLWidget()
         grid.addWidget(self.opengl, 4, 0, 1, 8)
 
         self.setLayout(grid)
-        self.setWindowTitle('Cyweemotion 3D(www.cyweemotion.com)')
+        self.setWindowTitle('Cyweemotion 3D')
         self.show()
 
         # 新建一个10ms的精准定时器
         self.timer = QTimer()
         self.timer.timeout.connect(self.on_timer)
         self.timer.start(100)
+        self.ser_hot_plug_timer = 0
 
         # 创建新线程
         self.worker = Worker()
@@ -379,13 +173,19 @@ class MyWindow(QWidget):
             print("cur baud: %s" % cur_baud)
             try:
                 self.obj.hw_open(port=ser_num, baud=cur_baud, rx_buffer_size=10240)
+
+                self.js_cfg['ser_baud'] = bds_ser.ser_buad_list_adjust(cur_baud, self.js_cfg['ser_baud'])
+                with open('config.json', 'w') as f:
+                    json.dump(self.js_cfg, f, indent=4)
+
                 self.btn.setText("关闭串口")
+                self.btn.setStyleSheet("background-color: green")
             except Exception as e:
                 QMessageBox.information(self, "错误:", str(e))
-            # print(self.combo1.currentText(), self.combo2.currentText(), self.label1.text(), self.label2.text())
         else:
             try:
                 self.btn.setText("打开串口")
+                self.btn.setStyleSheet("")
                 self.obj.hw_close()
             except Exception as e:
                 QMessageBox.information(self, "错误:", str(e))
@@ -395,13 +195,20 @@ class MyWindow(QWidget):
         self.opengl.store_current_pose()
 
     def on_timer(self):
-        # import random
-        # w = random.random()
-        # x = random.random()
-        # y = random.random()
-        # z = random.random()
-        # self.opengl.update_rotation(w, x, y, z)
-        pass
+        self.ser_hot_plug_timer += 1
+        if self.ser_hot_plug_timer > 10:
+            self.ser_hot_plug_timer = 0
+            self.ser_hot_plug_timer_detect()
+
+    def ser_hot_plug_timer_detect(self):
+        default_des = bds_ser.ser_hot_plug_detect(self.combo1.currentText(), self.com_des_list, self.com_name_list)
+        try:
+            if default_des != '':
+                self.combo1.clear()
+                self.combo1.addItems(self.com_des_list)
+                self.combo1.setCurrentIndex(self.com_des_list.index(default_des))
+        except ValueError as e:
+            print(e)
 
     def on_euler_data_received(self, pitch, yaw, roll):
         self.eulerEdits[0].setText(str(pitch))

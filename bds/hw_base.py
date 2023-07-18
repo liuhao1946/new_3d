@@ -169,7 +169,13 @@ class HardWareBase:
         pass
 
     def read_euler(self):
-        pass
+        data_list = []
+        while not self.euler_q.empty():
+            try:
+                data_list.append(self.euler_q.get())
+            except queue.Empty:
+                pass
+        return data_list
 
     def read_xyzw(self):
         data_list = []
