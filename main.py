@@ -110,10 +110,11 @@ class Worker(QThread):
             # 计算数据率
             data_packets_len += len(xyzw)
             if data_packets_len >= 100:
-                data_rate = time_diff.time_difference()*1000/data_packets_len
+                data_rate = 1000/(time_diff.time_difference()/data_packets_len)
                 data_packets_len = 0
                 self.dtDataReceived.emit(data_rate)
 
+            # time_diff.time_difference(print_flag=True)
             # 暂停一段时间模拟读取数据的过程
             time.sleep(0.003)
 

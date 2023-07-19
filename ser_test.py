@@ -3,6 +3,8 @@ import bds.bds_serial as bds_ser
 import time
 import threading
 import struct
+import math
+import bds.time_diff as td
 
 thread_lock = threading.Lock()
 
@@ -19,39 +21,56 @@ def tx_hex_data(win, ser_obj):
     # 四元数
     q_data_len = [0x12, 0x00]
     q_sid = [0x05, 0x05]
-    q_user_data = [0xD6, 0x02, 0xC1, 0x3B, 0x29, 0xA5, 0x86, 0x3C, 0x0C, 0x0F, 0x7F, 0xBF, 0xE2, 0xC6, 0xAB, 0x3D]
     # 欧拉角
     e_data_len = [0x0e, 0x00]
     e_sid = [0x05, 0x04]
     e_user_data = [0x69, 0x85, 0xC6, 0xC2, 0xEA, 0xBC, 0xE5, 0xBF, 0xEB, 0xAB, 0x5C, 0x3F]
 
     serial_num = 0
+    time_diff = td.TimeDifference()
+    theta = 0  # initial rotation angle
     while True:
-        thread_lock.acquire()
+        # thread_lock.acquire()
 
         try:
+            # calculate quaternion
+            theta_rad = math.radians(theta)
+            qw = math.cos(theta_rad / 2)
+            qx = math.sin(theta_rad / 2)
+            qy = 0
+            qz = 0
+            q_user_data = struct.pack("<ffff", qx, qy, qz, qw)
+
             serial_num += 1
             if serial_num > 65535:
                 serial_num = 0
 
             serial = list(struct.pack("<H", serial_num))
-            data = head + direct + serial + q_data_len + q_sid + q_user_data
+            data = head + direct + serial + q_data_len + q_sid + list(q_user_data)
             data_sum = list(struct.pack("<H", sum(data)))
             ser_obj.hw_write(data+data_sum)
 
-            serial_num += 1
-            if serial_num > 65535:
-                serial_num = 0
-            serial = list(struct.pack("<H", serial_num))
-            data = head + direct + serial + e_data_len + e_sid + e_user_data
-            data_sum = list(struct.pack("<H", sum(data)))
+           # time_diff.time_difference(print_flag=True)
 
-            ser_obj.hw_write(data + data_sum)
+            # serial_num += 1
+            # if serial_num > 65535:
+            #     serial_num = 0
+            # serial = list(struct.pack("<H", serial_num))
+            # data = head + direct + serial + e_data_len + e_sid + e_user_data
+            # data_sum = list(struct.pack("<H", sum(data)))
+
+            #ser_obj.hw_write(data + data_sum)
         except Exception as e:
             print(e)
 
-        if not stop_tx_flag:
-            thread_lock.release()
+        # if not stop_tx_flag:
+        #     pass
+            # thread_lock.release()
+
+        # update rotation angle
+        theta += 1.2
+        if theta >= 360:
+            theta -= 360
 
         time.sleep(0.001)
 
