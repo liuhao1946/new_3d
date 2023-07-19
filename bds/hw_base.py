@@ -143,6 +143,9 @@ class HardWareBase:
         self.hw_mag_cal_state = data[1] & 0x0f
         self.sf_mag_cal_state = (data[1] & 0x0f) >> 4
 
+        print('a_cal:%d g_cal:%d hw_mag_cal:%d sf_mag_cal:%d ' % (self.a_cal_state, self.g_cal_state,
+                                                                  self.hw_mag_cal_state, self.sf_mag_cal_state))
+
     def __fetch_euler(self, data):
         bytes_data = bytes(data)
 

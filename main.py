@@ -65,25 +65,21 @@ def euler_quat_open(flag):
 
 
 def get_agm_cal_state():
-    # 获取AG校正结果
-    sid = [0x08, 0x02]
-    ser_obj.hw_write(ser_protocol_data(sid, []))
-
-    # 获取MAG校正结果
-    sid = [0x08, 0x06]
-    ser_obj.hw_write(ser_protocol_data(sid, []))
+    ser_obj.hw_write(ser_protocol_data([0x03, 0x04], []))
 
 
 class Worker(QThread):
     eulerDataReceived = pyqtSignal(float, float, float)
     quatDataReceived = pyqtSignal(float, float, float, float)
     quatDataReceived_3d = pyqtSignal(float, float, float, float)
+    dtDataReceived = pyqtSignal(float)
 
     def run(self):
         display_clk_3d = 0
         quat_display_clk = 0
         euler_display_clk = 0
         time_diff = td.TimeDifference()
+        data_packets_len = 0
 
         while True:
             ser_obj.hw_read()
@@ -91,7 +87,6 @@ class Worker(QThread):
             xyzw = ser_obj.read_xyzw()
             euler = ser_obj.read_euler()
             if xyzw:
-
                 x, y, z, w = xyzw[-1]
 
                 display_clk_3d += 1
@@ -112,8 +107,13 @@ class Worker(QThread):
                 if euler_display_clk >= 20:
                     self.eulerDataReceived.emit(pitch, yaw, roll)
                     euler_display_clk = 0
+            # 计算数据率
+            data_packets_len += len(xyzw)
+            if data_packets_len >= 100:
+                data_rate = time_diff.time_difference()*1000/data_packets_len
+                data_packets_len = 0
+                self.dtDataReceived.emit(data_rate)
 
-            # time_diff.print_time_difference()
             # 暂停一段时间模拟读取数据的过程
             time.sleep(0.003)
 
@@ -189,12 +189,6 @@ class MyWindow(QWidget):
         self.btn.setFixedWidth(180)
         grid.addWidget(self.btn, 2, 1)
 
-        # 第四行的按钮一次对齐到第三行的文本输入框
-        self.btn_reset =QPushButton("复位姿态")
-        self.btn_reset.setFixedWidth(180)
-        self.btn_reset.clicked.connect(self.on_btn_reset_clicked)
-        grid.addWidget(self.btn_reset, 3, 1)
-
         # 第三列
         self.calEdits = []
         for i, label in enumerate(["acc_cal", "gyr_cal", "hw_mag_cal", "sf_mag_cal"]):
@@ -225,7 +219,7 @@ class MyWindow(QWidget):
 
         # 第二列
         self.eulerEdits = []
-        for i, label in enumerate(["pitch", "yaw", "roll"]):
+        for i, label in enumerate(["pitch", "yaw", "roll", "ODR"]):
             lbl = QLabel(label)
             lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             lbl.setFont(font)
@@ -240,12 +234,24 @@ class MyWindow(QWidget):
         self.checkbox = QCheckBox('接收姿态角', self)
         self.checkbox.setChecked(True)
         self.checkbox.stateChanged.connect(self.on_checkbox_state_changed)
-        grid.addWidget(self.checkbox, 3, 7)
+        grid.addWidget(self.checkbox, 4, 5)
+
+        # 第四行的按钮一次对齐到第三行的文本输入框
+        self.btn_reset =QPushButton("复位姿态")
+        self.btn_reset.setFixedWidth(180)
+        self.btn_reset.clicked.connect(self.on_btn_reset_clicked)
+        grid.addWidget(self.btn_reset, 4, 1)
+
+        # 第四行的按钮一次对齐到第三行的文本输入框
+        self.btn_cal =QPushButton("获得校准状态")
+        self.btn_cal.setFixedWidth(100)
+        self.btn_cal.clicked.connect(self.on_btn_cal_clicked)
+        grid.addWidget(self.btn_cal, 4, 3)
 
         # 第五行
         # grid.addWidget(QLabel(""), 4, 0, 1, 6)
         self.opengl = bds_3d.OpenGLWidget()
-        grid.addWidget(self.opengl, 5, 0, 10, 8)
+        grid.addWidget(self.opengl, 6, 0, 10, 8)
 
         self.setLayout(grid)
         self.setWindowTitle('Cyweemotion 3D')
@@ -262,6 +268,7 @@ class MyWindow(QWidget):
         self.worker.eulerDataReceived.connect(self.on_euler_data_received)
         self.worker.quatDataReceived.connect(self.on_quat_data_received)
         self.worker.quatDataReceived_3d.connect(self.on_quat_data_received_3d)
+        self.worker.dtDataReceived.connect(self.on_dt_data_received)
         self.worker.start()
 
     def on_checkbox_state_changed(self, state):
@@ -286,6 +293,11 @@ class MyWindow(QWidget):
 
                 self.btn.setText("关闭串口")
                 self.btn.setStyleSheet("background-color: green")
+
+                time.sleep(0.02)
+                # 获得欧拉角、四元数
+                euler_quat_open(True)
+                time.sleep(0.02)
                 # 获取校正状态
                 get_agm_cal_state()
             except Exception as e:
@@ -301,6 +313,9 @@ class MyWindow(QWidget):
     def on_btn_reset_clicked(self):
         print("3d reset")
         self.opengl.store_current_pose()
+
+    def on_btn_cal_clicked(self):
+        get_agm_cal_state()
 
     def cal_state_update(self):
         a_cal_state = ser_obj.read_a_cal_state()
@@ -348,21 +363,14 @@ class MyWindow(QWidget):
         self.eulerEdits[1].setText('%0.3f' % yaw)
         self.eulerEdits[2].setText('%0.3f' % roll)
 
+    def on_dt_data_received(self, dt):
+        self.eulerEdits[3].setText('%0.1f Hz' % dt)
+
     def on_quat_data_received(self, w, x, y, z):
         self.quatEdits[0].setText('%0.6f' % w)
         self.quatEdits[1].setText('%0.6f' % x)
         self.quatEdits[2].setText('%0.6f' % y)
         self.quatEdits[3].setText('%0.6f' % z)
-
-        # roll_rad, pitch_rad, yaw_rad = self.opengl.quaternion_to_euler(w, x, y, z)
-        # roll = self.opengl.radians_to_degrees(roll_rad)
-        # pitch = self.opengl.radians_to_degrees(pitch_rad)
-        # yaw = self.opengl.radians_to_degrees(yaw_rad)
-        #
-        # # eulerEdits[0]~[2] ->  pitch, yaw, roll
-        # self.eulerEdits[0].setText('%0.3f' % pitch)
-        # self.eulerEdits[1].setText('%0.3f' % yaw)
-        # self.eulerEdits[2].setText('%0.3f' % roll)
 
     def on_quat_data_received_3d(self, w, x, y, z):
         self.opengl.rotate_relative_to_base(w, x, y, z)

@@ -24,7 +24,7 @@ class TimeDifference:
             return 0
         return sum(self.time_points) / len(self.time_points)
 
-    def print_time_difference(self):
+    def time_difference(self, print_flag=False):
         diff = self.update_and_get_difference()
         average_diff = self.get_average_difference()
 
@@ -32,4 +32,7 @@ class TimeDifference:
         diff_int = round(diff)
         average_diff_int = round(average_diff)
 
-        print(f"两次运行到此处的时间差为：{diff_int}ms，平均时间差为：{average_diff_int}ms")
+        if print_flag:
+            print(f"两次运行到此处的时间差为：{diff_int}ms，平均时间差为：{average_diff_int}ms")
+
+        return diff_int

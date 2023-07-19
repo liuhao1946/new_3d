@@ -141,6 +141,23 @@ class OpenGLWidget(QOpenGLWidget):
 
         return red / 255.0, green / 255.0, blue / 255.0
 
+    def rotate_point(self, x, y, z, a, b, c, theta):
+        """
+        Rotate a point counterclockwise by a given angle around a given origin.
+
+        The angle should be given in degrees.
+        """
+        theta = math.radians(theta)  # convert theta from degrees to radians
+        cost = math.cos(theta)
+        sint = math.sin(theta)
+
+        # rotation matrix
+        xr = (a * a * (1 - cost) + cost) * x + (a * b * (1 - cost) - c * sint) * y + (a * c * (1 - cost) + b * sint) * z
+        yr = (a * b * (1 - cost) + c * sint) * x + (b * b * (1 - cost) + cost) * y + (b * c * (1 - cost) - a * sint) * z
+        zr = (a * c * (1 - cost) - b * sint) * x + (b * c * (1 - cost) + a * sint) * y + (c * c * (1 - cost) + cost) * z
+
+        return xr, yr, zr
+
     def drawAxes(self, axisLength, lineWidth):
         '''
         Draw 3D axes
@@ -182,24 +199,32 @@ class OpenGLWidget(QOpenGLWidget):
         self.drawArrowHead(0, 0, axisLength, arrowSize, 0, 0, 1)
         glDisable(GL_LINE_SMOOTH)
 
-        glEnable(GL_TEXTURE_2D)
-        glColor3f(1, 1, 1)  # 使用白色绘制标签
-        for label, position in zip('XYZ', [(axisLength + 0.2, 0, 0), (0, axisLength + 0.2, 0), (0, 0, axisLength + 0.2)]):
-            glBindTexture(GL_TEXTURE_2D, self.axis_labels[label])
-            glBegin(GL_QUADS)
-            glTexCoord2f(0, 0)
-            glVertex3f(position[0] - 0.1, position[1], position[2])
-            # 'X'
-            glTexCoord2f(1, 0)
-            glVertex3f(position[0] + 0.1, position[1], position[2])
-            # 'Y'
-            glTexCoord2f(1, 1)
-            glVertex3f(position[0] + 0.1, position[1] + 0.2, position[2])
-            # 'Z'
-            glTexCoord2f(0, 1)
-            glVertex3f(position[0] - 0.1, position[1] + 0.2, position[2])
-            glEnd()
-        glDisable(GL_TEXTURE_2D)
+        try:
+            glEnable(GL_TEXTURE_2D)
+            glColor3f(1, 1, 1)  # 使用白色绘制标签
+            for label, position, rotation_axis in zip('XYZ', [(axisLength + 0.2, 0, 0), (0, axisLength + 0.2, 0),
+                                                              (0, 0, axisLength + 0.2)],
+                                                      [(1, 0, 0), (0, 1, 0), (0, 0, 1)]):
+                glBindTexture(GL_TEXTURE_2D, self.axis_labels[label])
+                glBegin(GL_QUADS)
+                for dx, dy in [(-0.1, 0), (0.1, 0), (0.1, 0.2), (-0.1, 0.2)]:
+                    if label == 'X':  # Rotate X axis
+                        x, y, z = self.rotate_point(position[0] + dx, position[1] + dy, position[2], *rotation_axis, 90)
+                    elif label == 'Z':  # Rotate Z axis
+                        x, y, z = position[0] + dx, position[1] + dy, position[2] + dx
+                        x, y, z = x - position[0], y - position[1], z - position[2]
+                        x, y, z = self.rotate_point(x, y, z, *rotation_axis, 90)
+                        x, y, z = self.rotate_point(x, y, z, 0, 1, 0, -90)
+                        x, y, z = self.rotate_point(x, y, z, 0, 0, 1, 45)  # Added a little more rotation around the Z-axis
+                        x, y, z = x + position[0], y + position[1], z + position[2]
+                    else:  # Do not rotate Y axis
+                        x, y, z = position[0] + dx, position[1] + dy, position[2]
+                    glTexCoord2f((dx + 0.1) / 0.2, dy / 0.2)  # Adjust texture coordinates
+                    glVertex3f(x, y, z)
+                glEnd()
+            glDisable(GL_TEXTURE_2D)
+        except Exception as e:
+            print(e)
 
     def drawArrowHead(self, x, y, z, size, dx, dy, dz):
         '''
