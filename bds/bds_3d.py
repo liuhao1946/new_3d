@@ -297,6 +297,13 @@ class OpenGLWidget(QOpenGLWidget):
         Rotate the object relative to the stored base pose.
         The input parameters w, x, y, z represent a quaternion.
         """
+        # Check that the quaternion components are all real numbers and not NaN or inf
+        if not all(math.isfinite(v) for v in [w, x, y, z]):
+            raise ValueError("Quaternion components must be finite real numbers")
+
+        # Check that the quaternion has unit magnitude
+        if not math.isclose(math.sqrt(w ** 2 + x ** 2 + y ** 2 + z ** 2), 1, abs_tol=1e-3):
+            raise ValueError("Quaternion must have unit magnitude")
 
         # Compute the new rotation as the product of the inverse of the base quaternion and the input quaternion
         new_rotation = self.quaternion_multiply(self.base_quaternion, [w, x, y, z])

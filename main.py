@@ -74,6 +74,10 @@ class Worker(QThread):
     quatDataReceived_3d = pyqtSignal(float, float, float, float)
     dtDataReceived = pyqtSignal(float)
 
+    def __init__(self, js_cfg):
+        QThread.__init__(self)
+        self.js_cfg = js_cfg
+
     def run(self):
         display_clk_3d = 0
         quat_display_clk = 0
@@ -107,6 +111,7 @@ class Worker(QThread):
                 if euler_display_clk >= 20:
                     self.eulerDataReceived.emit(pitch, yaw, roll)
                     euler_display_clk = 0
+
             # 计算数据率
             data_packets_len += len(xyzw)
             if data_packets_len >= 100:
@@ -265,7 +270,7 @@ class MyWindow(QWidget):
         self.ser_hot_plug_timer = 0
 
         # 创建新线程
-        self.worker = Worker()
+        self.worker = Worker(self.js_cfg)
         self.worker.eulerDataReceived.connect(self.on_euler_data_received)
         self.worker.quatDataReceived.connect(self.on_quat_data_received)
         self.worker.quatDataReceived_3d.connect(self.on_quat_data_received_3d)
@@ -297,10 +302,10 @@ class MyWindow(QWidget):
 
                 time.sleep(0.02)
                 # 获得欧拉角、四元数
-                euler_quat_open(True)
+                # euler_quat_open(True)
                 time.sleep(0.02)
                 # 获取校正状态
-                get_agm_cal_state()
+                # get_agm_cal_state()
             except Exception as e:
                 QMessageBox.information(self, "错误:", str(e))
         else:
@@ -359,10 +364,11 @@ class MyWindow(QWidget):
             print(e)
 
     def on_euler_data_received(self, pitch, yaw, roll):
-        # eulerEdits[0]~[2] ->  pitch, yaw, roll
-        self.eulerEdits[0].setText('%0.3f' % pitch)
-        self.eulerEdits[1].setText('%0.3f' % yaw)
-        self.eulerEdits[2].setText('%0.3f' % roll)
+        if not self.js_cfg['euler_own_cal']:
+            # eulerEdits[0]~[2] ->  pitch, yaw, roll
+            self.eulerEdits[0].setText('%0.3f' % pitch)
+            self.eulerEdits[1].setText('%0.3f' % yaw)
+            self.eulerEdits[2].setText('%0.3f' % roll)
 
     def on_dt_data_received(self, dt):
         self.eulerEdits[3].setText('%0.1f Hz' % dt)
@@ -373,8 +379,19 @@ class MyWindow(QWidget):
         self.quatEdits[2].setText('%0.6f' % y)
         self.quatEdits[3].setText('%0.6f' % z)
 
+        # roll_x, pitch_y, yaw_z
+        if  self.js_cfg['euler_own_cal']:
+            roll, pitch, yaw = self.opengl.quaternion_to_euler(w, x, y, z)
+
+            self.eulerEdits[0].setText('%0.3f' % self.opengl.radians_to_degrees(pitch))
+            self.eulerEdits[1].setText('%0.3f' % self.opengl.radians_to_degrees(yaw))
+            self.eulerEdits[2].setText('%0.3f' % self.opengl.radians_to_degrees(roll))
+
     def on_quat_data_received_3d(self, w, x, y, z):
-        self.opengl.rotate_relative_to_base(w, x, y, z)
+        try:
+            self.opengl.rotate_relative_to_base(w, x, y, z)
+        except ValueError as v:
+            print(v)
 
     def closeEvent(self, event):
         print("Window is closing...")
@@ -386,6 +403,9 @@ class MyWindow(QWidget):
 
 
 def hw_error(err):
+    ser_obj.hw_close()
+    ex.btn.setText("打开串口")
+    ex.btn.setStyleSheet("")
     print(err)
 
 
@@ -398,3 +418,5 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = MyWindow(ser_obj)
     sys.exit(app.exec_())
+
+

@@ -27,18 +27,18 @@ def tx_hex_data(win, ser_obj):
     e_user_data = [0x69, 0x85, 0xC6, 0xC2, 0xEA, 0xBC, 0xE5, 0xBF, 0xEB, 0xAB, 0x5C, 0x3F]
 
     serial_num = 0
-    time_diff = td.TimeDifference()
     theta = 0  # initial rotation angle
+    axis_index = 0  # initial rotation axis (0:X, 1:Y, 2:Z)
     while True:
-        # thread_lock.acquire()
+        thread_lock.acquire()
 
         try:
             # calculate quaternion
             theta_rad = math.radians(theta)
             qw = math.cos(theta_rad / 2)
-            qx = math.sin(theta_rad / 2)
-            qy = 0
-            qz = 0
+            qx = math.sin(theta_rad / 2) if axis_index == 0 else 0
+            qy = math.sin(theta_rad / 2) if axis_index == 1 else 0
+            qz = math.sin(theta_rad / 2) if axis_index == 2 else 0
             q_user_data = struct.pack("<ffff", qx, qy, qz, qw)
 
             serial_num += 1
@@ -50,29 +50,27 @@ def tx_hex_data(win, ser_obj):
             data_sum = list(struct.pack("<H", sum(data)))
             ser_obj.hw_write(data+data_sum)
 
-           # time_diff.time_difference(print_flag=True)
+            serial_num += 1
+            if serial_num > 65535:
+                serial_num = 0
+            serial = list(struct.pack("<H", serial_num))
+            data = head + direct + serial + e_data_len + e_sid + e_user_data
+            data_sum = list(struct.pack("<H", sum(data)))
 
-            # serial_num += 1
-            # if serial_num > 65535:
-            #     serial_num = 0
-            # serial = list(struct.pack("<H", serial_num))
-            # data = head + direct + serial + e_data_len + e_sid + e_user_data
-            # data_sum = list(struct.pack("<H", sum(data)))
-
-            #ser_obj.hw_write(data + data_sum)
+            ser_obj.hw_write(data + data_sum)
         except Exception as e:
             print(e)
 
-        # if not stop_tx_flag:
-        #     pass
-            # thread_lock.release()
+        if not stop_tx_flag:
+            thread_lock.release()
 
         # update rotation angle
-        theta += 1.2
+        theta += 1.2  # 1.2 degree per 20 ms equals to 60 degree per second
         if theta >= 360:
             theta -= 360
+            axis_index = (axis_index + 1) % 3  # switch to the next axis
 
-        time.sleep(0.001)
+        time.sleep(0.02)  # 20ms delay
 
 
 def ser_connect(win, obj, com, baud):

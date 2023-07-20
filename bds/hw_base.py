@@ -168,6 +168,7 @@ class HardWareBase:
 
     def hw_data_hex_handle(self, byte_stream):
         if byte_stream != b'':
+            # print([hex(v) for v in byte_stream])
             for packet in self.parser.add_data(byte_stream):
                 self.packet_counter += 1
                 if self.packet_counter == self.downsample_rate:
