@@ -9,9 +9,11 @@ import bds.bds_3d as bds_3d
 import json
 import struct
 import bds.time_diff as td
+import logging as log
 
 global ser_obj
 
+CWM_VERSION = 'Cyweemotion 3D(v1.0.1)'
 
 package_number = 0
 
@@ -43,15 +45,11 @@ def ser_protocol_data(sid, user_data):
     return ser_data + to_2bytes(sum(ser_data))
 
 
-def euler_quat_open(flag):
+def euler_open(flag):
     if flag:
         # 欧拉角打开
         sid = [0x04, 0x04]
         user_data = [0x01]
-        ser_obj.hw_write(ser_protocol_data(sid, user_data))
-
-        # 四元数打开
-        sid = [0x04, 0x05]
         ser_obj.hw_write(ser_protocol_data(sid, user_data))
     else:
         # 欧拉角关闭
@@ -59,8 +57,17 @@ def euler_quat_open(flag):
         user_data = [0x00]
         ser_obj.hw_write(ser_protocol_data(sid, user_data))
 
+
+def quat_open(flag):
+    if flag:
+        # 四元数打开
+        sid = [0x04, 0x05]
+        user_data = [0x01]
+        ser_obj.hw_write(ser_protocol_data(sid, user_data))
+    else:
         # 四元数关闭
         sid = [0x04, 0x05]
+        user_data = [0x00]
         ser_obj.hw_write(ser_protocol_data(sid, user_data))
 
 
@@ -94,7 +101,7 @@ class Worker(QThread):
                 x, y, z, w = xyzw[-1]
 
                 display_clk_3d += 1
-                if display_clk_3d >= 3:
+                if display_clk_3d >= self.js_cfg['refresh_rate']:
                     self.quatDataReceived_3d.emit(w, x, y, z)
                     display_clk_3d = 0
 
@@ -104,12 +111,11 @@ class Worker(QThread):
                     quat_display_clk = 0
 
             if euler:
-                # rx: yaw-euler[0], pitch-euler[1], roll-euler[2]
-                # ui: pitch, yaw, roll
+                # serail rx: [yaw, pitch, roll]
                 euler_display_clk += 1
-                pitch, yaw, roll = euler[-1]
+                yaw, pitch, roll = euler[-1]
                 if euler_display_clk >= 20:
-                    self.eulerDataReceived.emit(pitch, yaw, roll)
+                    self.eulerDataReceived.emit(yaw, pitch, roll)
                     euler_display_clk = 0
 
             # 计算数据率
@@ -121,8 +127,7 @@ class Worker(QThread):
 
             # time_diff.time_difference(print_flag=True)
             # 暂停一段时间模拟读取数据的过程
-            time.sleep(0.003)
-
+            time.sleep(0.005)
 
 class MyWindow(QWidget):
     def __init__(self, obj):
@@ -161,7 +166,7 @@ class MyWindow(QWidget):
         if not self.com_name_list:
             self.com_name_list.append('')
 
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(800, 680)
         grid = QGridLayout()
 
         font = QFont("Arial", 11)
@@ -260,7 +265,7 @@ class MyWindow(QWidget):
         grid.addWidget(self.opengl, 6, 0, 10, 8)
 
         self.setLayout(grid)
-        self.setWindowTitle('Cyweemotion 3D')
+        self.setWindowTitle(CWM_VERSION)
         self.show()
 
         # 新建一个10ms的精准定时器
@@ -279,19 +284,28 @@ class MyWindow(QWidget):
 
     def on_checkbox_state_changed(self, state):
         if state == Qt.Checked:
-            euler_quat_open(True)
+            if self.js_cfg['euler_own_cal']:
+                quat_open(True)
+            else:
+                quat_open(True)
+                euler_open(True)
         else:
-            euler_quat_open(False)
+            if self.js_cfg['euler_own_cal']:
+                quat_open(False)
+            else:
+                quat_open(False)
+                euler_open(False)
 
     def on_btn_clicked(self):
         if self.btn.text() == "打开串口":
-            ser_num = self.com_name_list[self.com_des_list.index(self.combo1.currentText())]
+            cur_ser_num = self.com_name_list[self.com_des_list.index(self.combo1.currentText())]
             cur_baud = int(self.combo2.currentText())
 
-            print("ser number: %s" % ser_num)
-            print("cur baud: %s" % cur_baud)
+            log.info('串口打开:ser number: %s , baud: %d' % (cur_ser_num, cur_baud))
+            print("ser number: %s" % cur_ser_num)
+            print("cur baud: %d" % cur_baud)
             try:
-                self.obj.hw_open(port=ser_num, baud=cur_baud, rx_buffer_size=10240*3)
+                ser_obj.hw_open(port=cur_ser_num, baud=cur_baud, rx_buffer_size=10240*3)
 
                 self.js_cfg['ser_baud'] = bds_ser.ser_buad_list_adjust(cur_baud, self.js_cfg['ser_baud'])
                 with open('config.json', 'w') as f:
@@ -300,16 +314,24 @@ class MyWindow(QWidget):
                 self.btn.setText("关闭串口")
                 self.btn.setStyleSheet("background-color: green")
 
-                time.sleep(0.02)
-                # 获得欧拉角、四元数
-                # euler_quat_open(True)
-                time.sleep(0.02)
-                # 获取校正状态
-                # get_agm_cal_state()
+                if self.combo1.currentText().find('蓝牙') < 0:
+                    time.sleep(0.02)
+                    # 获得欧拉角、四元数
+                    quat_open(True)
+                    if not self.js_cfg['euler_own_cal']:
+                        time.sleep(0.02)
+                        quat_open(True)
+                    time.sleep(0.02)
+                    # 获取校正状态
+                    if self.js_cfg['get_cal_state_en']:
+                        get_agm_cal_state()
             except Exception as e:
+                print(e)
+                log.info('错误：%s' % str(e))
                 QMessageBox.information(self, "错误:", str(e))
         else:
             try:
+                log.info('串口关闭')
                 self.btn.setText("打开串口")
                 self.btn.setStyleSheet("")
                 self.obj.hw_close()
@@ -318,10 +340,17 @@ class MyWindow(QWidget):
 
     def on_btn_reset_clicked(self):
         print("3d reset")
+        log.info('3d reset')
         self.opengl.store_current_pose()
 
     def on_btn_cal_clicked(self):
-        get_agm_cal_state()
+        if self.js_cfg['get_cal_state_en']:
+            get_agm_cal_state()
+        else:
+            print('get cal state disble..')
+
+    def error_rpt(self, err_code):
+        QMessageBox.information(self, "错误:", err_code)
 
     def cal_state_update(self):
         a_cal_state = ser_obj.read_a_cal_state()
@@ -330,7 +359,7 @@ class MyWindow(QWidget):
         sf_mag_cal_state = ser_obj.read_sf_mag_cal_state()
 
         if self.a_cal_state_last != a_cal_state:
-            self.calEdits[0].setText("%d" % 0)
+            self.calEdits[0].setText("%d" % a_cal_state)
             self.a_cal_state_last = a_cal_state
 
         if self.g_cal_state_last != g_cal_state:
@@ -347,7 +376,6 @@ class MyWindow(QWidget):
 
     def on_timer(self):
         self.cal_state_update()
-
         self.ser_hot_plug_timer += 1
         if self.ser_hot_plug_timer > 10:
             self.ser_hot_plug_timer = 0
@@ -363,7 +391,7 @@ class MyWindow(QWidget):
         except ValueError as e:
             print(e)
 
-    def on_euler_data_received(self, pitch, yaw, roll):
+    def on_euler_data_received(self, yaw, pitch, roll):
         if not self.js_cfg['euler_own_cal']:
             # eulerEdits[0]~[2] ->  pitch, yaw, roll
             self.eulerEdits[0].setText('%0.3f' % pitch)
@@ -380,7 +408,7 @@ class MyWindow(QWidget):
         self.quatEdits[3].setText('%0.6f' % z)
 
         # roll_x, pitch_y, yaw_z
-        if  self.js_cfg['euler_own_cal']:
+        if self.js_cfg['euler_own_cal']:
             roll, pitch, yaw = self.opengl.quaternion_to_euler(w, x, y, z)
 
             self.eulerEdits[0].setText('%0.3f' % self.opengl.radians_to_degrees(pitch))
@@ -391,10 +419,12 @@ class MyWindow(QWidget):
         try:
             self.opengl.rotate_relative_to_base(w, x, y, z)
         except ValueError as v:
+            log.info(str(v))
             print(v)
 
     def closeEvent(self, event):
         print("Window is closing...")
+        log.info("Window is closing...\n")
 
         if self.obj.hw_is_open():
             self.obj.hw_close()
@@ -406,7 +436,7 @@ def hw_error(err):
     ser_obj.hw_close()
     ex.btn.setText("打开串口")
     ex.btn.setStyleSheet("")
-    print(err)
+    log.info("错误: %s\n" % str(err))
 
 
 def hw_warn(err):
@@ -414,6 +444,8 @@ def hw_warn(err):
 
 
 if __name__ == '__main__':
+    log.basicConfig(filename='3D.log', filemode='w', level=log.INFO, format='%(asctime)s %(message)s',
+                    datefmt='%Y/%m/%d %I:%M:%S')
     ser_obj = bds_ser.BDS_Serial(hw_error, hw_warn, char_format='hex')
     app = QApplication(sys.argv)
     ex = MyWindow(ser_obj)

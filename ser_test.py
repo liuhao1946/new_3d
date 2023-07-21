@@ -78,6 +78,7 @@ def ser_connect(win, obj, com, baud):
         try:
             cur_com_name = com
             cur_baud = baud
+            # print(cur_com_name, cur_baud)
             obj.hw_open(port=cur_com_name, baud=cur_baud, rx_buffer_size=10240*3)
             if obj.hw_is_open():
                 win['ser_connect'].update('关闭串口', button_color=('grey0', 'green4'))

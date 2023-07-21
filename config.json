@@ -8,6 +8,7 @@
         941176,
         9600
     ],
-    "std_odr": 1000,
-    "euler_own_cal": true
+    "refresh_rate": 3,
+    "euler_own_cal": false,
+    "get_cal_state_en": true
 }

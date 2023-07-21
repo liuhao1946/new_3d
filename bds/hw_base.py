@@ -141,7 +141,7 @@ class HardWareBase:
         self.a_cal_state = data[0] & 0x0f
         self.g_cal_state = (data[0] & 0xf0) >> 4
         self.hw_mag_cal_state = data[1] & 0x0f
-        self.sf_mag_cal_state = (data[1] & 0x0f) >> 4
+        self.sf_mag_cal_state = (data[1] & 0xf0) >> 4
 
         print('a_cal:%d g_cal:%d hw_mag_cal:%d sf_mag_cal:%d ' % (self.a_cal_state, self.g_cal_state,
                                                                   self.hw_mag_cal_state, self.sf_mag_cal_state))

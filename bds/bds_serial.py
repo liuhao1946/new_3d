@@ -95,8 +95,9 @@ class BDS_Serial(HardWareBase):
             self.ser.open()
             self.ser.reset_input_buffer()
             self.ser_is_start = True
-        except Exception as e:
-            raise ValueError(str(e))
+        except:
+            print(e)
+            # raise ValueError(str(e))
 
     def hw_close(self):
         self.ser_is_start = False

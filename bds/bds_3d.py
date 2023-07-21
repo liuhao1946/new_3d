@@ -53,7 +53,9 @@ class OpenGLWidget(QOpenGLWidget):
         # Then draw your text over the 3D scene
         painter = QPainter(self)
         painter.setPen(QColor(255, 255, 255))
-        painter.setFont(QFont('Arial', font_size))
+        font = QFont('Arial', font_size)
+        font.setBold(True)
+        painter.setFont(font)
         painter.drawText(x, y, text)
         painter.end()
         # Restore the saved OpenGL state
@@ -67,7 +69,7 @@ class OpenGLWidget(QOpenGLWidget):
         glRotatef(self.angle, self.x, self.y, self.z)
         self.drawAxes(3, 3)  # 在这里调用刚才添加的函数以绘制坐标轴
         self.drawCube(3, 0.5, 3)
-        # self.draw_text(10, 20, 'MF02')
+        self.draw_text(10, 20, 'MF02 Demo')
 
         self.update()  # Force window to repaint
 
