@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import QOpenGLWidget
 from PyQt5.QtGui import QSurfaceFormat, QColor, QFont, QPainter
 import pygame
 
+
 class OpenGLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
         fmt = QSurfaceFormat()
@@ -17,6 +18,9 @@ class OpenGLWidget(QOpenGLWidget):
         self.x = 0
         self.y = 0
         self.z = 1
+
+        self.title_s = 'MF02 Demo'
+        self.data_text = 'Angle refer: pitch(0) yaw(0) roll(0)'
 
         # Initialize the base and current quaternions as unit quaternions
         self.base_quaternion = [1, 0, 0, 0]
@@ -69,7 +73,8 @@ class OpenGLWidget(QOpenGLWidget):
         glRotatef(self.angle, self.x, self.y, self.z)
         self.drawAxes(3, 3)  # 在这里调用刚才添加的函数以绘制坐标轴
         self.drawCube(3, 0.5, 3)
-        self.draw_text(10, 20, 'MF02 Demo')
+        self.draw_text(10, 20, self.title_s)
+        self.draw_text(10, 20+25, self.data_text)
 
         self.update()  # Force window to repaint
 
@@ -335,3 +340,9 @@ class OpenGLWidget(QOpenGLWidget):
         # normalize the quaternion
         norm = (w ** 2 + x ** 2 + y ** 2 + z ** 2) ** 0.5
         return [w / norm, x / norm, y / norm, z / norm]
+
+    def set_3d_title_text(self, text):
+        self.title_s = text
+
+    def set_3d_data_text(self, text):
+        self.data_text = text

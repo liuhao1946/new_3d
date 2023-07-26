@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QByteArray
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QDialog
 import time
 import bds.bds_serial as bds_ser
 from PyQt5.QtGui import QPixmap, QIcon, QFont
@@ -13,7 +13,7 @@ import logging as log
 
 global ser_obj
 
-CWM_VERSION = 'Cyweemotion 3D(v1.0.1)'
+CWM_VERSION = 'Cyweemotion 3D(v1.1.0)'
 
 package_number = 0
 
@@ -39,7 +39,7 @@ def to_2bytes(data):
 def ser_protocol_data(sid, user_data):
     protocol_fix = [0xAA, 0x5A, 0xAA, 0x5A, 0x01]
     package_num = add_package_number()
-    data_len = to_2bytes(len(sid+user_data))
+    data_len = to_2bytes(len(sid + user_data))
     ser_data = protocol_fix + package_num + data_len + sid + user_data
 
     return ser_data + to_2bytes(sum(ser_data))
@@ -121,13 +121,60 @@ class Worker(QThread):
             # 计算数据率
             data_packets_len += len(xyzw)
             if data_packets_len >= 100:
-                data_rate = 1000/(time_diff.time_difference()/data_packets_len)
+                data_rate = 1000 / (time_diff.time_difference() / data_packets_len)
                 data_packets_len = 0
                 self.dtDataReceived.emit(data_rate)
 
             # time_diff.time_difference(print_flag=True)
             # 暂停一段时间模拟读取数据的过程
             time.sleep(0.005)
+
+
+class Dialog(QDialog):
+    def __init__(self):
+        super(Dialog, self).__init__()
+        self.setWindowTitle('配置')
+
+        grid = QGridLayout()
+
+        # self.lineEdit = QLineEdit("500")  # 创建文本输入框并设置默认值为500
+        # grid.addWidget(self.lineEdit, 0, 0)  # 将文本输入框添加到布局中，位于按钮的旁边
+
+        # self.btn = QPushButton("设置串口ODR(Hz)")
+        # self.btn.clicked.connect(self.set_uart_odr)
+        # # self.btn.setFixedWidth(180)
+        # grid.addWidget(self.btn, 0, 1)
+
+        # 设置传感器ODR
+        self.ODR_com = QComboBox()
+        self.ODR_com.addItems([str(v) for v in [125, 250, 500, 1000]])
+        grid.addWidget(self.ODR_com, 0, 0)
+
+        self.btn = QPushButton("设置传感器ODR(Hz)")
+        self.btn.clicked.connect(self.set_sensor_odr)
+        grid.addWidget(self.btn, 0, 1)
+
+        # 获得ODR
+        self.lineEdit = QLineEdit("")  # 创建文本输入框并设置默认值为500
+        grid.addWidget(self.lineEdit, 1, 0)  # 将文本输入框添加到布局中，位于按钮的旁边
+
+        self.btn = QPushButton("获得传感器ODR(HZ)")
+        self.btn.clicked.connect(self.get_odr)
+        # self.btn.setFixedWidth(180)
+        grid.addWidget(self.btn, 1, 1)
+
+        self.setFixedSize(200, 100)  # 设置对话框的固定大小
+
+        self.setLayout(grid)
+        # self.show()
+
+    def get_odr(self):
+        print('get_odr')
+
+    def set_sensor_odr(self):
+        s_odr = int(self.ODR_com.currentText())
+        print('set_sensor_odr:%d' % s_odr)
+
 
 class MyWindow(QWidget):
     def __init__(self, obj):
@@ -202,7 +249,7 @@ class MyWindow(QWidget):
 
         # 第三列
         self.calEdits = []
-        for i, label in enumerate(["acc_cal", "gyr_cal", "hw_mag_cal", "sf_mag_cal"]):
+        for i, label in enumerate(["acc_cal", "gyr_cal", "hw_mag_cal", "sw_mag_cal"]):
             lbl = QLabel(label)
             lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             lbl.setFont(font)
@@ -247,14 +294,19 @@ class MyWindow(QWidget):
         self.checkbox.stateChanged.connect(self.on_checkbox_state_changed)
         grid.addWidget(self.checkbox, 4, 5)
 
+        self.btn_cfg = QPushButton("配置")
+        # self.btn_cfg.setFixedWidth(180)
+        self.btn_cfg.clicked.connect(self.show_dialog)
+        grid.addWidget(self.btn_cfg, 4, 7)
+
         # 第四行的按钮一次对齐到第三行的文本输入框
-        self.btn_reset =QPushButton("复位姿态")
+        self.btn_reset = QPushButton("复位姿态")
         self.btn_reset.setFixedWidth(180)
         self.btn_reset.clicked.connect(self.on_btn_reset_clicked)
         grid.addWidget(self.btn_reset, 4, 1)
 
         # 第四行的按钮一次对齐到第三行的文本输入框
-        self.btn_cal =QPushButton("获得校准状态")
+        self.btn_cal = QPushButton("获得校准状态")
         self.btn_cal.setFixedWidth(100)
         self.btn_cal.clicked.connect(self.on_btn_cal_clicked)
         grid.addWidget(self.btn_cal, 4, 3)
@@ -296,6 +348,10 @@ class MyWindow(QWidget):
                 quat_open(False)
                 euler_open(False)
 
+    def show_dialog(self):
+        self.dialog = Dialog()
+        self.dialog.exec_()
+
     def on_btn_clicked(self):
         if self.btn.text() == "打开串口":
             cur_ser_num = self.com_name_list[self.com_des_list.index(self.combo1.currentText())]
@@ -305,7 +361,7 @@ class MyWindow(QWidget):
             print("ser number: %s" % cur_ser_num)
             print("cur baud: %d" % cur_baud)
             try:
-                ser_obj.hw_open(port=cur_ser_num, baud=cur_baud, rx_buffer_size=10240*3)
+                ser_obj.hw_open(port=cur_ser_num, baud=cur_baud, rx_buffer_size=10240 * 3)
 
                 self.js_cfg['ser_baud'] = bds_ser.ser_buad_list_adjust(cur_baud, self.js_cfg['ser_baud'])
                 with open('config.json', 'w') as f:
@@ -342,6 +398,9 @@ class MyWindow(QWidget):
         print("3d reset")
         log.info('3d reset')
         self.opengl.store_current_pose()
+        self.opengl.set_3d_data_text('Angle refer: pitch(%d) yaw(%d) roll(%d)' % (int(self.eulerEdits[0].text()),
+                                                                                  int(self.eulerEdits[1].text()),
+                                                                                  int(self.eulerEdits[2].text())))
 
     def on_btn_cal_clicked(self):
         if self.js_cfg['get_cal_state_en']:
@@ -450,5 +509,3 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = MyWindow(ser_obj)
     sys.exit(app.exec_())
-
-
