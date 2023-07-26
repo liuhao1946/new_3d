@@ -257,6 +257,7 @@ class MyWindow(QWidget):
             grid.addWidget(lbl, i, 2)  # change to third column
 
             edit = QLineEdit("")
+            edit.setReadOnly(True)
             edit.setFixedWidth(100)
             grid.addWidget(edit, i, 3)  # change to third column
             self.calEdits.append(edit)
@@ -271,6 +272,7 @@ class MyWindow(QWidget):
             grid.addWidget(lbl, i, 4)  # change to third column
 
             edit = QLineEdit("0.0")
+            edit.setReadOnly(True)
             edit.setFixedWidth(100)
             grid.addWidget(edit, i, 5)  # change to third column
             self.quatEdits.append(edit)
@@ -285,6 +287,7 @@ class MyWindow(QWidget):
             grid.addWidget(lbl, i, 6)  # change to second column
 
             edit = QLineEdit("0.0")
+            edit.setReadOnly(True)
             edit.setFixedWidth(100)
             grid.addWidget(edit, i, 7)  # change to second column
             self.eulerEdits.append(edit)
@@ -398,9 +401,10 @@ class MyWindow(QWidget):
         print("3d reset")
         log.info('3d reset')
         self.opengl.store_current_pose()
-        self.opengl.set_3d_data_text('Angle refer: pitch(%d) yaw(%d) roll(%d)' % (int(self.eulerEdits[0].text()),
-                                                                                  int(self.eulerEdits[1].text()),
-                                                                                  int(self.eulerEdits[2].text())))
+        self.opengl.set_3d_data_text('Angle refer: pitch(%0.1f) yaw(%0.1f) roll(%0.1f)' %
+                                     (float(self.eulerEdits[0].text()),
+                                      float(self.eulerEdits[1].text()),
+                                      float(self.eulerEdits[2].text())))
 
     def on_btn_cal_clicked(self):
         if self.js_cfg['get_cal_state_en']:
