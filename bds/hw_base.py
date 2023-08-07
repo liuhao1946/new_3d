@@ -18,42 +18,43 @@ class PacketParser:
     def add_data(self, data):
         self.buffer += data
         while True:
-            packet = self.parse_packet()
-            if packet is None:
+            packet_data = self.extract_packet()
+            if packet_data is None:
                 break
-            self.check_packet_loss(packet)
-            self.last_packet = packet
-            yield packet
+            packet_parts = self.parse_packet(packet_data)
+            self.check_packet_loss(packet_parts)
+            self.last_packet = packet_parts
+            yield packet_data, packet_parts
 
-    def parse_packet(self):
-        # If the buffer doesn't start with the correct header, discard data until it does
+    def extract_packet(self):
         while self.buffer[:4] != b'\xAA\xAA\xAA\xAA' and len(self.buffer) >= 4:
             self.buffer = self.buffer[1:]
 
-        # If we don't have enough data for a complete packet, return None
-        if len(self.buffer) < 4 + 1 + 2 + 2 + 2:  # size of each section of the packet
+        if len(self.buffer) < 4 + 1 + 2 + 2 + 2:
             return None
 
-        # Parse the packet
-        head = list(self.buffer[:4])
-        trans_direction, pack_ser, payloads_len, event_type = struct.unpack('<B H H H', self.buffer[4:4 + 1 + 2 + 2 + 2])
+        _, _, payloads_len, _ = struct.unpack('<B H H H', self.buffer[4:4 + 1 + 2 + 2 + 2])
+        packet_length = 4 + 1 + 2 + 2 + payloads_len + 2
 
-        # Check if we have all the user data
-        if len(self.buffer) < 4 + 1 + 2 + 2 + payloads_len + 2:  # size of each section of the packet and user data
+        if len(self.buffer) < packet_length:
             return None
 
-        user_data = list(self.buffer[4 + 1 + 2 + 2 + 2:4 + 1 + 2 + 2 + payloads_len])
+        packet_data = self.buffer[:packet_length]
 
         sum_check = struct.unpack('<H', self.buffer[4 + 1 + 2 + 2 + payloads_len:4 + 1 + 2 + 2 + payloads_len + 2])[0]
 
-        # Validate checksum
-        if sum_check != sum(self.buffer[0:4 + 1 + 2 + 2 + payloads_len]) & 0xFFFF:
-            # Checksum failed; discard this packet and look for the next one
+        if sum_check != sum(packet_data[0:4 + 1 + 2 + 2 + payloads_len]) & 0xFFFF:
             self.buffer = self.buffer[1:]
             return None
 
-        # Remove this packet from the buffer
-        self.buffer = self.buffer[4 + 1 + 2 + 2 + payloads_len + 2:]
+        self.buffer = self.buffer[packet_length:]
+        return packet_data
+
+    def parse_packet(self, packet_data):
+        head = list(packet_data[:4])
+        trans_direction, pack_ser, payloads_len, event_type = struct.unpack('<B H H H', packet_data[4:4 + 1 + 2 + 2 + 2])
+        user_data = list(packet_data[4 + 1 + 2 + 2 + 2:4 + 1 + 2 + 2 + payloads_len])
+        sum_check = struct.unpack('<H', packet_data[4 + 1 + 2 + 2 + payloads_len:4 + 1 + 2 + 2 + payloads_len + 2])[0]
 
         return {
             'head': head,
@@ -65,15 +66,13 @@ class PacketParser:
             'sum': sum_check,
         }
 
-    def check_packet_loss(self, packet):
+    def check_packet_loss(self, packet_parts):
         if self.last_pack_ser is not None:
-            expected_pack_ser = (self.last_pack_ser + 1) % 0x10000  # We use modulo operation to handle overflow
-            if packet['pack_ser'] != expected_pack_ser:
-                print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet['pack_ser']}")
-                # print(f"Last packet: {self.last_packet}")
-                # print(f"Current packet: {packet}")
+            expected_pack_ser = (self.last_pack_ser + 1) % 0x10000
+            if packet_parts['pack_ser'] != expected_pack_ser:
+                print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet_parts['pack_ser']}")
 
-        self.last_pack_ser = packet['pack_ser']
+        self.last_pack_ser = packet_parts['pack_ser']
 
 
 def find_key(text, key):
@@ -111,15 +110,31 @@ class HardWareBase:
         self.xyzw_q = Queue()
         self.euler_q = Queue()
 
+        self.err_q = Queue()
+        self.log_q = Queue()
+        self.save_log = False
+
         self.parser = PacketParser()
 
         self.downsample_rate = 1
         self.packet_counter = 0
+        self.sensor_odr = 0
+        self.uart_odr = 0
+
+        self.ag_yaw = -1000
+        self.ag_pitch = -1000
+        self.ag_roll = -1000
+        self.agm_yaw = -1000
+        self.agm_pitch = -1000
+        self.agm_roll = -1000
 
         self.evt_cb = {
                 0x0505: self.__fetch_xyzw,
                 0x0405: self.__fetch_euler,
                 0x0403: self.__fetch_cal_inf,
+                0x0303: self.__fetch_odr,
+                0x0506: self.__fetch_alg_result,
+                0x0406: self.__fetch_err_inf,
               }
 
     def hw_open(self, **kwargs):
@@ -137,6 +152,25 @@ class HardWareBase:
     def hw_data_handle(self, s1):
         pass
 
+    def __fetch_err_inf(self, data):
+        self.err_q.put(''.join([chr(v) for v in data]))
+
+    def __fetch_alg_result(self, data):
+        bytes_data = bytes(data)
+        self.ag_yaw, self.ag_pitch, self.ag_roll = struct.unpack('<fff', bytes_data[0:12])
+        print(self.ag_yaw, self.ag_pitch, self.ag_roll)
+        ag_x, ag_y, ag_y, ag_w = struct.unpack('<ffff', bytes_data[12:28])
+        self.agm_yaw, self.agm_pitch, self.agm_roll = struct.unpack('<fff', bytes_data[28:40])
+        agm_x, agm_y, agm_z, agm_w = struct.unpack('<ffff', bytes_data[40:56])
+        print(self.agm_yaw, self.agm_pitch, self.agm_roll)
+
+    def __fetch_odr(self, data):
+        bytes_data = bytes(data)
+        self.sensor_odr = struct.unpack('<i', bytes_data[0:4])[0]
+        self.uart_odr = struct.unpack('<H', bytes_data[4:6])[0]
+
+        print(self.sensor_odr, self.uart_odr)
+
     def __fetch_cal_inf(self, data):
         self.a_cal_state = data[0] & 0x0f
         self.g_cal_state = (data[0] & 0xf0) >> 4
@@ -146,34 +180,44 @@ class HardWareBase:
         print('a_cal:%d g_cal:%d hw_mag_cal:%d sf_mag_cal:%d ' % (self.a_cal_state, self.g_cal_state,
                                                                   self.hw_mag_cal_state, self.sf_mag_cal_state))
 
+    def __fetch_log_string(self):
+        pass
+
     def __fetch_euler(self, data):
         bytes_data = bytes(data)
 
         # 将每4个字节转换为一个浮点数
-        yaw = struct.unpack('<f', bytes_data[0:4])[0]
-        pitch = struct.unpack('<f', bytes_data[4:8])[0]
-        roll = struct.unpack('<f', bytes_data[8:12])[0]
+        yaw, pitch, roll = struct.unpack('<fff', bytes_data[0:12])
         self.euler_q.put([yaw, pitch, roll])
 
     def __fetch_xyzw(self, data):
         bytes_data = bytes(data)
 
         # 将每4个字节转换为一个浮点数
-        x = struct.unpack('<f', bytes_data[0:4])[0]
-        y = struct.unpack('<f', bytes_data[4:8])[0]
-        z = struct.unpack('<f', bytes_data[8:12])[0]
-        w = struct.unpack('<f', bytes_data[12:16])[0]
-
+        x, y, z, w = struct.unpack('<ffff', bytes_data[0:16])
         self.xyzw_q.put([x, y, z, w])
 
     def hw_data_hex_handle(self, byte_stream):
-        if byte_stream != b'':
-            # print([hex(v) for v in byte_stream])
-            for packet in self.parser.add_data(byte_stream):
-                self.packet_counter += 1
-                if self.packet_counter == self.downsample_rate:
-                    self.packet_counter = 0
-                    self.evt_cb[packet['event_type']](packet['user_data'])
+        if byte_stream == b'':
+            return
+
+        for packet_data, packet_parts in self.parser.add_data(byte_stream):
+            try:
+                # print(hex(packet_parts['event_type']))
+                self.evt_cb[packet_parts['event_type']](packet_parts['user_data'])
+            except Exception as e:
+                print(e)
+            if self.save_log:
+                thread_lock.acquire()
+                self.log_q.put(packet_data)
+                thread_lock.release()
+
+    def hw_save_log(self, state):
+        self.save_log = state
+
+        thread_lock.acquire()
+        self.log_q.queue.clear()
+        thread_lock.release()
 
     def hw_write(self, data):
         pass
@@ -213,6 +257,46 @@ class HardWareBase:
 
     def read_sf_mag_cal_state(self):
         return self.sf_mag_cal_state
+
+    def read_odr(self):
+        return [self.sensor_odr, self.uart_odr]
+
+    def hw_read_log(self):
+        data_bytes = b''
+        while not self.log_q.empty():
+            try:
+                data_bytes += bytes(self.log_q.get())
+            except queue.Empty:
+                pass
+
+        return data_bytes
+
+    def hw_read_err(self):
+        data_list = ''
+        while not self.err_q.empty():
+            try:
+                data_list += self.err_q.get()
+            except queue.Empty:
+                pass
+        return data_list
+
+    def hw_read_ag_alg_output(self):
+        if self.ag_yaw == -1000:
+            return []
+
+        ag = [self.ag_yaw, self.ag_pitch, self.ag_roll]
+        self.ag_yaw = self.ag_pitch = self.ag_roll = -1000
+
+        return ag
+
+    def hw_read_agm_alg_output(self):
+        if self.agm_yaw == -1000:
+            return []
+
+        agm = [self.agm_yaw, self.agm_pitch, self.agm_roll]
+        self.agm_yaw = self.agm_pitch = self.agm_roll = -1000
+
+        return agm
 
 
 if __name__ == '__main__':

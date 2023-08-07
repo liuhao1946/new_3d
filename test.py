@@ -1,40 +1,39 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QPushButton, QMainWindow
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QMenu, QAction
 
-
-class Dialog(QDialog):
+class MyWindow(QMainWindow):
     def __init__(self):
-        super(Dialog, self).__init__()
-        self.setWindowTitle('Dialog')
+        super().__init__()
 
-        self.layout = QVBoxLayout(self)
+        self.textEdit = QTextEdit()
+        self.textEdit.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.textEdit.setReadOnly(True)
+        self.setCentralWidget(self.textEdit)
 
-        self.button1 = QPushButton('Button 1')
-        self.layout.addWidget(self.button1)
+        # 连接信号和槽
+        self.textEdit.customContextMenuRequested.connect(self.showContextMenu)
+        self.textEdit.setContextMenuPolicy(Qt.CustomContextMenu)
 
-        self.button2 = QPushButton('Button 2')
-        self.layout.addWidget(self.button2)
+        self.setGeometry(100, 100, 400, 300)
 
+    def showContextMenu(self, position):
+        print(position)
+        # 创建标准上下文菜单
+        menu = self.textEdit.createStandardContextMenu()
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super(MainWindow, self).__init__()
-        self.setWindowTitle('Main Window')
+        # 创建清除动作并连接到槽函数
+        clear_action = QAction('清除', self)
+        clear_action.triggered.connect(self.textEdit.clear)
 
-        self.button = QPushButton('Open Dialog', self)
-        self.setCentralWidget(self.button)
+        # 将清除动作添加到菜单中
+        menu.addAction(clear_action)
 
-        self.button.clicked.connect(self.show_dialog)
-
-    def show_dialog(self):
-        self.dialog = Dialog()
-        self.dialog.exec_()
-
+        # 使用 QTextEdit 的 mapToGlobal 方法转换位置
+        menu.exec_(self.textEdit.mapToGlobal(position))
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-
-    main = MainWindow()
-    main.show()
-
+    window = MyWindow()
+    window.show()
     sys.exit(app.exec_())

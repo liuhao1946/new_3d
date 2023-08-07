@@ -20,7 +20,8 @@ class OpenGLWidget(QOpenGLWidget):
         self.z = 1
 
         self.title_s = 'MF02 Demo'
-        self.data_text = 'Angle refer: pitch(0) yaw(0) roll(0)'
+        # self.data_text = 'Angle refer: pitch(0.0) yaw(0.0) roll(0.0)'
+        self.data_text = ''
 
         # Initialize the base and current quaternions as unit quaternions
         self.base_quaternion = [1, 0, 0, 0]
@@ -68,7 +69,7 @@ class OpenGLWidget(QOpenGLWidget):
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
-        glTranslatef(0.0, 0.0, -10)
+        glTranslatef(0.0, 0.0, -12)
         glRotatef(-90, 1, 0, 0)
         glRotatef(self.angle, self.x, self.y, self.z)
         self.drawAxes(3, 3)  # 在这里调用刚才添加的函数以绘制坐标轴
@@ -346,3 +347,18 @@ class OpenGLWidget(QOpenGLWidget):
 
     def set_3d_data_text(self, text):
         self.data_text = text
+
+    def convert_angles(self, yaw, pitch, roll):
+        # 将Yaw转换为0到360度
+        if yaw < 0:
+            yaw += 360
+
+        # 将Pitch转换为0到180度
+        if pitch < 0:
+            pitch += 180
+
+        # 将Roll转换为0到360度
+        if roll < 0:
+            roll += 360
+
+        return yaw, pitch, roll

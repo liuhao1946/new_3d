@@ -31,27 +31,33 @@ def ser_hot_plug_detect(last_default_des, last_des_list, last_name_list):
     :return: Serial port description displayed by default in the combo box. Returns an 'empty string' indicating no
     change to the serial port
     """
-    cur_com_des_list, cur_com_name_list = serial_find()
+
     default_des = ''
-    if cur_com_name_list != last_name_list:
-        des_new, des_old = set(cur_com_des_list), set(last_des_list)
-        # 串口增加
-        def_new_len, def_old_len = len(des_new), len(des_old)
-        if def_new_len > def_old_len:
-            # 插入
-            default_des = list(des_new.difference(des_old))[0]
-        elif def_new_len < def_old_len:
-            # 拔出，但不是目标串口
-            if last_default_des in cur_com_des_list:
-                default_des = last_default_des
+    try:
+        cur_com_des_list, cur_com_name_list = serial_find()
+        if not cur_com_des_list:
+            return default_des
+        if cur_com_name_list != last_name_list:
+            des_new, des_old = set(cur_com_des_list), set(last_des_list)
+            # 串口增加
+            def_new_len, def_old_len = len(des_new), len(des_old)
+            if def_new_len > def_old_len:
+                # 插入
+                default_des = list(des_new.difference(des_old))[0]
+            elif def_new_len < def_old_len:
+                # 拔出，但不是目标串口
+                if last_default_des in cur_com_des_list:
+                    default_des = last_default_des
+                else:
+                    default_des = cur_com_des_list[0]
             else:
-                default_des = cur_com_des_list[0]
-        else:
-            pass
-        del last_des_list[:]
-        del last_name_list[:]
-        [last_name_list.append(v) for v in cur_com_name_list]
-        [last_des_list.append(v) for v in cur_com_des_list]
+                pass
+            del last_des_list[:]
+            del last_name_list[:]
+            [last_name_list.append(v) for v in cur_com_name_list]
+            [last_des_list.append(v) for v in cur_com_des_list]
+    except Exception as e:
+        print(e)
 
     return default_des
 
@@ -112,6 +118,7 @@ class BDS_Serial(HardWareBase):
 
     def hw_write(self, data):
         if self.ser.is_open:
+            print(data)
             self.ser.write(list_to_bytes(data))
         else:
             print('串口没有打开')
