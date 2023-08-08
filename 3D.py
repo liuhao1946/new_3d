@@ -256,7 +256,7 @@ class MyWindow(QWidget):
         log.info("com_name_list:%s" % self.com_name_list)
 
         try:
-            self.setMinimumSize(920, 680)
+            self.setMinimumSize(940, 680)
             grid = QGridLayout()
 
             font = QFont("Arial", 11)
@@ -289,6 +289,10 @@ class MyWindow(QWidget):
             self.btn.clicked.connect(self.on_btn_clicked)
             self.btn.setFixedWidth(180)
             grid.addWidget(self.btn, 2, 1)
+
+            self.skip_but = QPushButton('一键跳转')
+            self.skip_but.clicked.connect(self.skip_to_file)
+            grid.addWidget(self.skip_but, 0, 8)
 
             # 第三列
             self.calEdits = []
@@ -336,7 +340,7 @@ class MyWindow(QWidget):
                 self.eulerEdits.append(edit)
 
             self.checkbox = QCheckBox('接收姿态角', self)
-            self.checkbox.setChecked(True)
+            self.checkbox.setChecked(False)
             self.checkbox.stateChanged.connect(self.on_checkbox_state_changed)
             grid.addWidget(self.checkbox, 4, 7)
 
@@ -378,8 +382,8 @@ class MyWindow(QWidget):
 
             grid.addWidget(self.textEdit, 6, 7, 5, 4)
 
-            # 校准
-            self.cal_but = QPushButton("校准")
+            # 获得算法结果
+            self.cal_but = QPushButton("获得算法结果")
             self.cal_but.clicked.connect(self.get_alg_result)
             self.cal_but.setFixedWidth(140)
             self.cal_but.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -449,6 +453,13 @@ class MyWindow(QWidget):
 
         # 使用 QTextEdit 的 mapToGlobal 方法转换位置
         menu.exec_(self.textEdit.mapToGlobal(position))
+
+    def skip_to_file(self):
+        try:
+            os.startfile(os.path.dirname(os.path.realpath(sys.argv[0])) + '\\aaa_log_data')
+        except Exception as e:
+            print(e)
+            log.info(str(e))
 
     def set_sensor_odr(self):
         u_odr = [125, 250, 500, 500]
@@ -542,16 +553,25 @@ class MyWindow(QWidget):
                 self.btn.setStyleSheet("background-color: green")
 
                 if self.combo1.currentText().find('蓝牙') < 0:
-                    time.sleep(0.02)
+                    # 先关闭四元数、欧拉角
+                    euler_open(False)
+                    quat_open(False)
+                    time.sleep(0.03)
+
+                    # 获得校准状态
+                    get_agm_cal_state()
+                    time.sleep(0.03)
+                    # 获得ODR
+                    self.get_odr()
+                    time.sleep(0.03)
+
                     # 获得欧拉角、四元数
                     quat_open(True)
                     if not self.js_cfg['euler_own_cal']:
                         time.sleep(0.02)
-                        quat_open(True)
-                    time.sleep(0.02)
-                    # 获取校正状态
-                    if self.js_cfg['get_cal_state_en']:
-                        get_agm_cal_state()
+                        euler_open(True)
+
+                    self.checkbox.setChecked(True)
             except Exception as e:
                 print(e)
                 log.info('错误：%s' % str(e))
@@ -561,6 +581,10 @@ class MyWindow(QWidget):
                 log.info('串口关闭')
                 self.btn.setText("打开串口")
                 self.btn.setStyleSheet("")
+                self.checkbox.setChecked(False)
+                euler_open(False)
+                quat_open(False)
+                time.sleep(0.05)
                 self.obj.hw_close()
             except Exception as e:
                 QMessageBox.information(self, "错误:", str(e))
@@ -729,6 +753,8 @@ class MyWindow(QWidget):
 
 
 def hw_error(err):
+    time.sleep(0.05)
+
     ser_obj.hw_close()
     ex.btn.setText("打开串口")
     ex.btn.setStyleSheet("")
