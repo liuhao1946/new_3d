@@ -227,6 +227,10 @@ class OpenGLWidget(QOpenGLWidget):
                         x, y, z = x + position[0], y + position[1], z + position[2]
                     else:  # Do not rotate Y axis
                         x, y, z = position[0] + dx, position[1] + dy, position[2]
+                        # Move the label to the origin, rotate it, and then move it back
+                        x, y, z = x - position[0], y - position[1], z - position[2]
+                        x, y, z = self.rotate_point(x, y, z, 1, 0, 0, 90)
+                        x, y, z = x + position[0], y + position[1], z + position[2]
                     glTexCoord2f((dx + 0.1) / 0.2, dy / 0.2)  # Adjust texture coordinates
                     glVertex3f(x, y, z)
                 glEnd()
