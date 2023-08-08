@@ -347,18 +347,3 @@ class OpenGLWidget(QOpenGLWidget):
 
     def set_3d_data_text(self, text):
         self.data_text = text
-
-    def convert_angles(self, yaw, pitch, roll):
-        # 将Yaw转换为0到360度
-        if yaw < 0:
-            yaw += 360
-
-        # 将Pitch转换为0到180度
-        if pitch < 0:
-            pitch += 180
-
-        # 将Roll转换为0到360度
-        if roll < 0:
-            roll += 360
-
-        return yaw, pitch, roll

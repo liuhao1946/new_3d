@@ -229,9 +229,10 @@ class MyWindow(QWidget):
         self.log_file_name = ''
         self.sensor_odr = -1
 
-        self.alg_output_data_file = 'aaa_log_data\\' + 'alg_output_data' + datetime.datetime.now().strftime(
-                                    '%Y-%m-%d_%H_%M_%S') + '.csv '
+        self.alg_output_data_file = 'aaa_log_data\\' + 'alg_output_data_' + datetime.datetime.now().strftime(
+            '%Y-%m-%d_%H_%M_%S') + '.csv '
         self.t_ag = []
+        self.sn = 0
 
         exe_icon = b'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAA99JREFUaEPtmVtIFGEUx/9n1m72FIRQFAnZbSN0VyM0o8DsspuFuK4+9ZR0oZforQcffCvwJXqICgoqUFtSLJcgDKMQ19Cxi2ZGdLGHKHpJK5FmTnyzKXuZdWZ3Z6yN/UAGnO875/8758y3M+cjZPigDNePLMDfzqClGWAG4V6RDwrtgEQbwFyoARI9hcqv4OBH2DcUIAJbBW4JAHcVbwGrtSD4AGwyEPcSjABIukXegefpgqQMwG3OhVi60KeJZqpOSQhxuwbzfTpA/pHpVGwkDcCdxW44VBFp8bcuFac6a14DCECRAnRwYDAZm6YA+E5x7qxoRlUyDpKeS7gzC1M18MNovSEAB12nwTgJIN/ImMX334FwgTxy81x2EwJw0OUEcB6MCouFJWeO0A2H0kB7n73VW6gL8Ed8Gxibk/Nm02xCDxzKAdr77HusB32ALtcTACU2yUnV7BXyyg2GABx014G5JVUvtq5TsZuq5O5IH3EZ4C73XYC9kZNGxgn1zRLE9UAJ40ilql2tHIFewrUHEu7JBOdqRstpVbtGDUIneeRDBgCuVwDWR056OEyoaHRE2VqxDGjYo8Jfxti4KjWYobdCNKH1sYQv36K1djcp2Lk5zu4YeeUNcwME3T/BvDg2uvXNDogo6Q2RjdrtKqq3MXIXzZ2XySngeo+k2RKB0Ru+MpEBJf4W0RR5BpcYZSBhOEXE2kOEjj7C8Hi8c5EV/x+Qcme0GSFWiA70xkdbCMrPA3ylKmrKGFsLEmeUvHKUY51nwGWqHjr7BYyEjhBh4md8sNavZJQUAIsXMPrGSHt+9IbHzfCVhYUvNcieWG8ZwIyYj1+BjpCE9r7EJRErfE0eo7aUDaOtB2w5QKST3tFwid3uI7z/rB/xs4dVHNunmor2vAPE7lxnbkgIjYVBVi8HLp1QUFloqkIT7gS2ZiDWa05Nzuy/bp5SUFeennhbnoFEoXrxgVB0KvzbIbbWT1d/GW6xc2/A4bvzloHL9yUcvyhpTkXkRQasGPMG0NQmoak1DNBYp6LRr1qhf/4ykAVIkK9sCZkt5GwJpVFC4tUs7nXabORn5tmUgSnyyoav0y8BbExWcOx8mwBGyStHtS5NfVKmAmMLgKlPSos+6m0BMPNRL6LNFrRVbAAw11bRAMJdubQaW5GNgP5zCtxr03gTZX6MH9P7yT8yGVvOtrYWB98QJqag110w/1iJ1iKko+QZeKO36P9t7kbSZnR7PTZtGXnAoVd7GXvEpAuTiYd8uiAzx6yqtAvEztnzBcIwmEYgqT3/5DGr+T3R+pmG26j1Lq21mAWwNp7JW/sNV5joQICi7RQAAAAASUVORK5CYII='
 
@@ -459,21 +460,24 @@ class MyWindow(QWidget):
         ser_obj.hw_write(ser_protocol_data([0x03, 0x03], []))
 
     def get_alg_result(self):
+        if self.get_alg_output_count >= 2:
+            self.get_alg_output_count = 0
         ser_obj.hw_write(ser_protocol_data([0x07, 0x05], []))
         self.get_alg_output_count += 1
+        time.sleep(0.05)
 
     def reset_cal_mf(self):
+        self.cal_ser = 0
         self.get_alg_output_count = 0
-        self.alg_output_data_file = 'aaa_log_data\\' + 'alg_output_data' + datetime.datetime.now().strftime(
-            '%Y-%m-%d_%H_%M_%S') \
-                                    + '.csv '
+        self.alg_output_data_file = 'aaa_log_data\\' + 'alg_output_data_' + \
+                                    datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.csv '
 
     def save_data_cb(self, state):
         state = True if state == Qt.Checked else False
         ser_obj.hw_save_log(state)
         if state:
-            self.log_file_name = 'aaa_log_data\\' + 'log_' + datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') \
-                                 + '.bin '
+            self.log_file_name = 'aaa_log_data\\' + 'log_' + \
+                                 datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.bin '
 
     def save_log_to_file(self, file_name, data_bytes):
         if data_bytes == b'':
@@ -606,7 +610,11 @@ class MyWindow(QWidget):
         self.show_cal_state()
         self.show_odr()
         self.show_mf_err()
-        self.show_alg_output()
+        try:
+            self.show_alg_output()
+        except Exception as e:
+            print(e)
+            log.info(str(e))
 
         self.ser_timer_1s += 1
         if self.ser_timer_1s > 10:
@@ -620,7 +628,6 @@ class MyWindow(QWidget):
         agm = ser_obj.hw_read_agm_alg_output()
 
         t_ag = []
-        alg_output_str = ''
         if len(ag) > 0:
             t_ag = ag
         elif len(agm) > 0:
@@ -633,35 +640,34 @@ class MyWindow(QWidget):
                 self.textEdit.append('------------------------------')
                 self.textEdit.append('| I  | %0.2f | %0.2f  | %0.2f |' % (t_ag[0], t_ag[1], t_ag[2]))
                 self.t_ag = t_ag
-
-                # 写标题
-                if not os.path.exists(self.alg_output_data_file):
-                    with open(self.alg_output_data_file, 'a', newline='') as file:
-                        writer = csv.writer(file)
-                        writer.writerow(['', 'yaw', 'pitch', 'roll'])
-
-                with open(self.alg_output_data_file, 'a', newline='') as file:
-                    writer = csv.writer(file)
-                    writer.writerow(['I', '%0.2f' % t_ag[0], '%0.2f' % t_ag[1], '%0.2f' % t_ag[2]])
             elif self.get_alg_output_count == 2:
                 self.get_alg_output_count = 0
                 self.textEdit.append('-----------------------------')
                 self.textEdit.append('| II | %0.2f | %0.2f  | %0.2f |' % (t_ag[0], t_ag[1], t_ag[2]))
                 self.textEdit.append('-----------------------------')
 
-                yaw_1, pitch_1, roll_1 = self.opengl.convert_angles(self.t_ag[0], self.t_ag[1], self.t_ag[2])
-                yaw_2, pitch_2, roll_2 = self.opengl.convert_angles(t_ag[0], t_ag[1], t_ag[2])
-                diff_yaw = abs(yaw_1 - yaw_2)
-                diff_pitch = abs(pitch_1 - pitch_2)
-                diff_roll = abs(roll_1 - roll_2)
+                # yaw_1, pitch_1, roll_1 = self.opengl.convert_angles(self.t_ag[0], self.t_ag[1], self.t_ag[2])
+                # yaw_2, pitch_2, roll_2 = self.opengl.convert_angles(t_ag[0], t_ag[1], t_ag[2])
+
+                diff_yaw = (t_ag[0]-self.t_ag[0]+180+360) % 360-180
+                diff_pitch = (t_ag[1]-self.t_ag[1]+180+360) % 360-180
+                diff_roll = t_ag[2]-self.t_ag[2]
 
                 self.textEdit.append('|diff| %0.2f | %0.2f  | %0.2f |' % (diff_yaw, diff_pitch, diff_roll))
                 self.textEdit.append('-----------------------------\n')
 
+                # 写标题
+                if not os.path.exists(self.alg_output_data_file):
+                    with open(self.alg_output_data_file, 'a', newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(['sn', 'yaw1', 'yaw2', 'yaw_diff', 'pitch1', 'pitch2', 'pitch_diff', 'roll1',
+                                         'roll2', 'roll_diff'])
                 with open(self.alg_output_data_file, 'a', newline='') as file:
+                    self.sn += 1
                     writer = csv.writer(file)
-                    writer.writerow(['II', '%0.2f' % t_ag[0], '%0.2f' % t_ag[1], '%0.2f' % t_ag[2]])
-                    writer.writerow(['diff', '%0.2f' % diff_yaw, '%0.2f' % diff_pitch, '%0.2f' % diff_roll])
+                    writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
+                                     '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
+                                     '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
 
             self.textEdit.verticalScrollBar().setValue(self.textEdit.verticalScrollBar().maximum())  # 滚动到底部
 
