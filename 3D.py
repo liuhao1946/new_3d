@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QCheckBox
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QByteArray
-from PyQt5.QtWidgets import QMessageBox, QDialog, QTextEdit, QSizePolicy, QAction
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QByteArray, QMutex, pyqtSlot
+from PyQt5.QtWidgets import QMessageBox, QDialog, QTextEdit, QSizePolicy, QAction, QProgressBar, QVBoxLayout
 import time
 import bds.bds_serial as bds_ser
 from PyQt5.QtGui import QPixmap, QIcon, QFont
@@ -13,10 +13,14 @@ import logging as log
 import datetime
 import csv
 import os
+import requests
+import re
+
+download_test_json = {'id': 326968, 'tag_name': 'v1.2.1', 'target_commitish': 'd1ead002c3591d91ae442965d019d76da0cb395f', 'prerelease': False, 'name': 'v1.2.1', 'body': '1、新增log显示区域\r\n2、新增录制原始数据log\r\n3、新增欧拉角求差并保存到文件\r\n4、新增一键跳转按钮', 'author': {'id': 13296607, 'login': 'cyweemotion-public', 'name': 'cyweemotion_public', 'avatar_url': 'https://gitee.com/assets/no_portrait.png', 'url': 'https://gitee.com/api/v5/users/cyweemotion-public', 'html_url': 'https://gitee.com/cyweemotion-public', 'remark': '', 'followers_url': 'https://gitee.com/api/v5/users/cyweemotion-public/followers', 'following_url': 'https://gitee.com/api/v5/users/cyweemotion-public/following_url{/other_user}', 'gists_url': 'https://gitee.com/api/v5/users/cyweemotion-public/gists{/gist_id}', 'starred_url': 'https://gitee.com/api/v5/users/cyweemotion-public/starred{/owner}{/repo}', 'subscriptions_url': 'https://gitee.com/api/v5/users/cyweemotion-public/subscriptions', 'organizations_url': 'https://gitee.com/api/v5/users/cyweemotion-public/orgs', 'repos_url': 'https://gitee.com/api/v5/users/cyweemotion-public/repos', 'events_url': 'https://gitee.com/api/v5/users/cyweemotion-public/events{/privacy}', 'received_events_url': 'https://gitee.com/api/v5/users/cyweemotion-public/received_events', 'type': 'User'}, 'created_at': '2023-08-09T13:13:25+08:00', 'assets': [{'browser_download_url': 'https://gitee.com/cyweemotion-public/cwm_3d/releases/download/v1.2.1/CWM_3D.msi', 'name': 'CWM_3D.msi'}, {'browser_download_url': 'https://gitee.com/cyweemotion-public/cwm_3d/archive/refs/tags/v1.2.1.zip'}]}
 
 global ser_obj
 
-CWM_VERSION = 'Cyweemotion 3D(v1.2.0)'
+CWM_VERSION = 'Cyweemotion 3D(v1.3.0)'
 
 package_number = 0
 
@@ -86,6 +90,160 @@ def uint_to_b(n):
     return list(struct.pack('<I', n))
 
 
+class VerDetectWorker(QThread):
+    ver_remind = pyqtSignal(dict)
+
+    def __init__(self, ver):
+        QThread.__init__(self)
+        self.ver = ver
+
+    def run(self):
+        try:
+            print('Download from gitee')
+            latest_release = requests.get("https://gitee.com/api/v5/repos/cyweemotion-public/cwm_3d/releases",
+                                          timeout=5).json()[-1]
+            log.info('download source: gitee')
+
+            if self.ver != latest_release['tag_name']:
+                # ver_info = '软件更新:' + latest_release['tag_name'] + '\n'
+                # ver_info += latest_release['body']
+                self.ver_remind.emit(latest_release)
+        except Exception as e:
+            log.info('download error: ' + str(e))
+            print('download error:' + str(e))
+
+
+class download_thread(QThread):
+    download_state_notify = pyqtSignal(str, str)
+
+    mux_lock = QMutex()
+    mux_lock.lock()
+
+    def __init__(self, ver_info):
+        QThread.__init__(self)
+        self.ver_info = ver_info
+
+    def run(self):
+        try:
+            self.mux_lock.lock()
+            if not self.isInterruptionRequested():
+                # 获取下载路径
+                home_dir = os.path.expanduser('~')
+                download_dir = os.path.join(home_dir, 'Downloads')
+
+                rtt_latest_version = self.ver_info['tag_name']
+                print('rtt latest version %s' % rtt_latest_version)
+                log.info('rtt latest version %s' % rtt_latest_version)
+
+                download_url = self.ver_info['assets'][0]['browser_download_url']
+                tag_name = self.ver_info['assets'][0]['name']
+                filename = os.path.join(download_dir, tag_name)
+
+                print('Download url: %s' % download_url)
+                print('Download path : %s' % filename)
+
+                log.info('Download url: %s' % download_url)
+
+                # # 请求文件
+                response = requests.get(download_url, timeout=5, stream=True)
+                # 获取文件大小
+                total_size_in_bytes = int(response.headers.get('Content-Length', 0))
+                block_size = 1024  # 1 Kibibyte
+                download_len = 0
+                print('file total size: %d' % total_size_in_bytes)
+                percent_latest = 0
+                with open(filename, 'wb') as file:
+                    for data in response.iter_content(block_size):
+                        file.write(data)
+                        download_len += len(data)
+                        percent = download_len * 100 // total_size_in_bytes
+                        if percent_latest != percent:
+                            self.download_state_notify.emit('downloading', str(percent))
+                            percent_latest = percent
+                            print('downloading', percent)
+                log.info('download_done')
+                print('download_done')
+                self.download_state_notify.emit('download_done', filename)
+        except Exception as e:
+                print(e)
+                try:
+                    self.download_state_notify.emit('download_err',  str(e))
+                except:
+                    pass
+
+
+class DownloadDialog(QDialog):
+    def __init__(self, ver_info):
+        super().__init__()
+
+        self.ver_info = ver_info
+        self.setWindowTitle('download')
+        self.setFixedSize(500, 300)
+        layout = QVBoxLayout()
+
+        update_info = '软件更新:' + ver_info['tag_name'] + '\n'
+        update_info += ver_info['body']
+
+        # 第一行：文本控件
+        self.text_label = QLabel(update_info)
+        layout.addWidget(self.text_label)
+
+        # 第二行：进度条控件
+        self.progress_bar = QProgressBar()
+        layout.addWidget(self.progress_bar)
+
+        # 第三行：超链接
+        link_label = QLabel('<a href="https://gitee.com/cyweemotion-public/cwm_3d/releases">软件托管地址</a>')
+        link_label.setOpenExternalLinks(True)
+        layout.addWidget(link_label)
+
+        # 第四行：两个按钮
+        self.download_button = QPushButton('立即下载')
+        layout.addWidget(self.download_button)
+
+        self.download_button.clicked.connect(self.start_download)
+
+        self.d_thread = download_thread(ver_info)
+        self.d_thread.download_state_notify.connect(self.download_state_notify)
+        self.d_thread.start()
+
+        self.exe_file_name = ''
+        self.setLayout(layout)
+
+    def download_state_notify(self, key, value):
+        if key == 'downloading':
+            self.progress_bar.setValue(int(value))
+        elif key == 'download_err':
+            self.download_button.setText('立即下载')
+            print('download error:', key, value)
+            QMessageBox.information(self, "错误:", value)
+        elif key == 'download_done':
+            print(key, value)
+            self.text_label.setText('下载完成，等待自动安装')
+            self.download_button.setText('立即下载')
+            self.exe_file_name = value
+            self.close()
+
+    def get_exe_file_name(self):
+        return self.exe_file_name
+
+    def start_download(self):
+        if self.download_button.text() == '立即下载':
+            self.d_thread.mux_lock.unlock()
+            self.download_button.setText('下载中...')
+            time.sleep(0.1)
+            print('开始下载')
+        else:
+            QMessageBox.information(self, "错误:", '正在下载')
+
+    def closeEvent(self, event):
+        print('download quit....')
+        self.d_thread.requestInterruption()
+        self.d_thread.mux_lock.unlock()
+        self.d_thread.wait()
+        super().closeEvent(event)
+
+
 class Worker(QThread):
     eulerDataReceived = pyqtSignal(float, float, float)
     quatDataReceived = pyqtSignal(float, float, float, float)
@@ -103,7 +261,7 @@ class Worker(QThread):
         time_diff = td.TimeDifference()
         data_packets_len = 0
 
-        while True:
+        while not self.isInterruptionRequested():
             ser_obj.hw_read()
 
             xyzw = ser_obj.read_xyzw()
@@ -202,6 +360,7 @@ class Dialog(QDialog):
 
     def closeEvent(self, event):
         self.cfg_dialog_state.emit('config dialog close')
+        super().closeEvent(event)
 
 
 class MyWindow(QWidget):
@@ -233,6 +392,8 @@ class MyWindow(QWidget):
             '%Y-%m-%d_%H_%M_%S') + '.csv '
         self.t_ag = []
         self.sn = 0
+
+        self.exe_file_name = ''
 
         exe_icon = b'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAA99JREFUaEPtmVtIFGEUx/9n1m72FIRQFAnZbSN0VyM0o8DsspuFuK4+9ZR0oZforQcffCvwJXqICgoqUFtSLJcgDKMQ19Cxi2ZGdLGHKHpJK5FmTnyzKXuZdWZ3Z6yN/UAGnO875/8758y3M+cjZPigDNePLMDfzqClGWAG4V6RDwrtgEQbwFyoARI9hcqv4OBH2DcUIAJbBW4JAHcVbwGrtSD4AGwyEPcSjABIukXegefpgqQMwG3OhVi60KeJZqpOSQhxuwbzfTpA/pHpVGwkDcCdxW44VBFp8bcuFac6a14DCECRAnRwYDAZm6YA+E5x7qxoRlUyDpKeS7gzC1M18MNovSEAB12nwTgJIN/ImMX334FwgTxy81x2EwJw0OUEcB6MCouFJWeO0A2H0kB7n73VW6gL8Ed8Gxibk/Nm02xCDxzKAdr77HusB32ALtcTACU2yUnV7BXyyg2GABx014G5JVUvtq5TsZuq5O5IH3EZ4C73XYC9kZNGxgn1zRLE9UAJ40ilql2tHIFewrUHEu7JBOdqRstpVbtGDUIneeRDBgCuVwDWR056OEyoaHRE2VqxDGjYo8Jfxti4KjWYobdCNKH1sYQv36K1djcp2Lk5zu4YeeUNcwME3T/BvDg2uvXNDogo6Q2RjdrtKqq3MXIXzZ2XySngeo+k2RKB0Ru+MpEBJf4W0RR5BpcYZSBhOEXE2kOEjj7C8Hi8c5EV/x+Qcme0GSFWiA70xkdbCMrPA3ylKmrKGFsLEmeUvHKUY51nwGWqHjr7BYyEjhBh4md8sNavZJQUAIsXMPrGSHt+9IbHzfCVhYUvNcieWG8ZwIyYj1+BjpCE9r7EJRErfE0eo7aUDaOtB2w5QKST3tFwid3uI7z/rB/xs4dVHNunmor2vAPE7lxnbkgIjYVBVi8HLp1QUFloqkIT7gS2ZiDWa05Nzuy/bp5SUFeennhbnoFEoXrxgVB0KvzbIbbWT1d/GW6xc2/A4bvzloHL9yUcvyhpTkXkRQasGPMG0NQmoak1DNBYp6LRr1qhf/4ykAVIkK9sCZkt5GwJpVFC4tUs7nXabORn5tmUgSnyyoav0y8BbExWcOx8mwBGyStHtS5NfVKmAmMLgKlPSos+6m0BMPNRL6LNFrRVbAAw11bRAMJdubQaW5GNgP5zCtxr03gTZX6MH9P7yT8yGVvOtrYWB98QJqag110w/1iJ1iKko+QZeKO36P9t7kbSZnR7PTZtGXnAoVd7GXvEpAuTiYd8uiAzx6yqtAvEztnzBcIwmEYgqT3/5DGr+T3R+pmG26j1Lq21mAWwNp7JW/sNV5joQICi7RQAAAAASUVORK5CYII='
 
@@ -437,8 +598,31 @@ class MyWindow(QWidget):
             self.worker.quatDataReceived_3d.connect(self.on_quat_data_received_3d)
             self.worker.dtDataReceived.connect(self.on_dt_data_received)
             self.worker.start()
+
+            # test
+            # self.version_remind(download_test_json)
+
+            self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION))
+            self.ver_detect.ver_remind.connect(self.version_remind)
+            self.ver_detect.start()
         except Exception as e:
             log.info("error: %s" % str(e))
+
+    def version_remind(self, ver_info):
+        print(ver_info)
+        download_dialog = DownloadDialog(ver_info)
+        download_dialog.exec_()
+
+        if download_dialog.exe_file_name != '':
+            self.exe_file_name = download_dialog.exe_file_name
+
+            self.close_timer = QTimer()
+            self.close_timer.setSingleShot(True)  # 设置为单次定时器
+            self.close_timer.timeout.connect(self.closeWindow)  # 连接 timeout 信号到 self.close 方法
+            self.close_timer.start(300)  # 启动定时器，延迟 300 毫秒
+
+    def closeWindow(self):
+        self.close()
 
     def showContextMenu(self, position):
         # 创建标准上下文菜单
@@ -456,7 +640,8 @@ class MyWindow(QWidget):
 
     def skip_to_file(self):
         try:
-            os.startfile(os.path.dirname(os.path.realpath(sys.argv[0])) + '\\aaa_log_data')
+            self.close()
+            # os.startfile(os.path.dirname(os.path.realpath(sys.argv[0])) + '\\aaa_log_data')
         except Exception as e:
             print(e)
             log.info(str(e))
@@ -673,9 +858,9 @@ class MyWindow(QWidget):
                 # yaw_1, pitch_1, roll_1 = self.opengl.convert_angles(self.t_ag[0], self.t_ag[1], self.t_ag[2])
                 # yaw_2, pitch_2, roll_2 = self.opengl.convert_angles(t_ag[0], t_ag[1], t_ag[2])
 
-                diff_yaw = (t_ag[0]-self.t_ag[0]+180+360) % 360-180
-                diff_pitch = (t_ag[1]-self.t_ag[1]+180+360) % 360-180
-                diff_roll = t_ag[2]-self.t_ag[2]
+                diff_yaw = (t_ag[0] - self.t_ag[0] + 180 + 360) % 360 - 180
+                diff_pitch = (t_ag[1] - self.t_ag[1] + 180 + 360) % 360 - 180
+                diff_roll = t_ag[2] - self.t_ag[2]
 
                 self.textEdit.append('|diff| %0.2f | %0.2f  | %0.2f |' % (diff_yaw, diff_pitch, diff_roll))
                 self.textEdit.append('-----------------------------\n')
@@ -746,10 +931,25 @@ class MyWindow(QWidget):
         print("Window is closing...")
         log.info("Window is closing...\n")
 
+        self.worker.requestInterruption()
+        self.worker.quit()
+        self.worker.wait()
+
+        self.ver_detect.wait()
+
         if self.obj.hw_is_open():
             self.obj.hw_close()
+
         # 然后调用父类的 closeEvent 方法，以确保窗口被正确关闭
         super().closeEvent(event)
+
+        # 最后一刻再启动安装程序
+        if self.exe_file_name != '':
+            try:
+                print('start install....')
+                os.startfile(self.exe_file_name)
+            except Exception as e:
+                print(e)
 
 
 def hw_error(err):
