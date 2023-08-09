@@ -932,9 +932,7 @@ class MyWindow(QWidget):
         log.info("Window is closing...\n")
 
         self.worker.requestInterruption()
-        self.worker.quit()
         self.worker.wait()
-
         self.ver_detect.wait()
 
         if self.obj.hw_is_open():
