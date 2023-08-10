@@ -5,6 +5,11 @@ from queue import Queue
 from bds.hw_base import HardWareBase
 
 
+def convert_to_hex(decimal_list):
+    hex_list = [format(x, '02X') for x in decimal_list]
+    return ' '.join(hex_list)
+
+
 def serial_find():
     """
     返回计算机上的COM名称
@@ -101,7 +106,7 @@ class BDS_Serial(HardWareBase):
             self.ser.open()
             self.ser.reset_input_buffer()
             self.ser_is_start = True
-        except:
+        except Exception as e:
             print(e)
             # raise ValueError(str(e))
 
@@ -118,7 +123,8 @@ class BDS_Serial(HardWareBase):
 
     def hw_write(self, data):
         if self.ser.is_open:
-            print(data)
+            print(convert_to_hex(data))
+            # print(' '.join([hex(v) for v in data])
             self.ser.write(list_to_bytes(data))
         else:
             print('串口没有打开')

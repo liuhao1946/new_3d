@@ -240,7 +240,7 @@ class DownloadDialog(QDialog):
         print('download quit....')
         self.d_thread.requestInterruption()
         self.d_thread.mux_lock.unlock()
-        self.d_thread.wait()
+        # self.d_thread.wait()
         super().closeEvent(event)
 
 
@@ -602,9 +602,9 @@ class MyWindow(QWidget):
             # test
             # self.version_remind(download_test_json)
 
-            self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION))
-            self.ver_detect.ver_remind.connect(self.version_remind)
-            self.ver_detect.start()
+            # self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION))
+            # self.ver_detect.ver_remind.connect(self.version_remind)
+            # self.ver_detect.start()
         except Exception as e:
             log.info("error: %s" % str(e))
 
@@ -640,8 +640,7 @@ class MyWindow(QWidget):
 
     def skip_to_file(self):
         try:
-            self.close()
-            # os.startfile(os.path.dirname(os.path.realpath(sys.argv[0])) + '\\aaa_log_data')
+            os.startfile(os.path.dirname(os.path.realpath(sys.argv[0])) + '\\aaa_log_data')
         except Exception as e:
             print(e)
             log.info(str(e))
@@ -678,7 +677,7 @@ class MyWindow(QWidget):
     def save_log_to_file(self, file_name, data_bytes):
         if data_bytes == b'':
             return
-        with open(file_name, 'wb') as file:
+        with open(file_name, 'ab') as file:
             file.write(data_bytes)
 
     def on_checkbox_state_changed(self, state):
@@ -766,9 +765,9 @@ class MyWindow(QWidget):
                 log.info('串口关闭')
                 self.btn.setText("打开串口")
                 self.btn.setStyleSheet("")
-                self.checkbox.setChecked(False)
-                euler_open(False)
-                quat_open(False)
+                # self.checkbox.setChecked(False)
+                # euler_open(False)
+                # quat_open(False)
                 time.sleep(0.05)
                 self.obj.hw_close()
             except Exception as e:
@@ -865,18 +864,18 @@ class MyWindow(QWidget):
                 self.textEdit.append('|diff| %0.2f | %0.2f  | %0.2f |' % (diff_yaw, diff_pitch, diff_roll))
                 self.textEdit.append('-----------------------------\n')
 
-                # 写标题
-                if not os.path.exists(self.alg_output_data_file):
-                    with open(self.alg_output_data_file, 'a', newline='') as file:
-                        writer = csv.writer(file)
-                        writer.writerow(['sn', 'yaw1', 'yaw2', 'yaw_diff', 'pitch1', 'pitch2', 'pitch_diff', 'roll1',
-                                         'roll2', 'roll_diff'])
-                with open(self.alg_output_data_file, 'a', newline='') as file:
-                    self.sn += 1
-                    writer = csv.writer(file)
-                    writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
-                                     '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
-                                     '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
+                # # 写标题
+                # if not os.path.exists(self.alg_output_data_file):
+                #     with open(self.alg_output_data_file, 'a', newline='') as file:
+                #         writer = csv.writer(file)
+                #         writer.writerow(['sn', 'yaw1', 'yaw2', 'yaw_diff', 'pitch1', 'pitch2', 'pitch_diff', 'roll1',
+                #                          'roll2', 'roll_diff'])
+                # with open(self.alg_output_data_file, 'a', newline='') as file:
+                #     self.sn += 1
+                #     writer = csv.writer(file)
+                #     writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
+                #                      '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
+                #                      '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
 
             self.textEdit.verticalScrollBar().setValue(self.textEdit.verticalScrollBar().maximum())  # 滚动到底部
 
@@ -932,8 +931,6 @@ class MyWindow(QWidget):
         log.info("Window is closing...\n")
 
         self.worker.requestInterruption()
-        self.worker.wait()
-        self.ver_detect.wait()
 
         if self.obj.hw_is_open():
             self.obj.hw_close()

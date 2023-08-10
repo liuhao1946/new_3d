@@ -70,7 +70,9 @@ class PacketParser:
         if self.last_pack_ser is not None:
             expected_pack_ser = (self.last_pack_ser + 1) % 0x10000
             if packet_parts['pack_ser'] != expected_pack_ser:
-                print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet_parts['pack_ser']}")
+                pass
+                # print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet_parts['pack_ser']}")
+                # print(packet_parts)
 
         self.last_pack_ser = packet_parts['pack_ser']
 
@@ -133,7 +135,7 @@ class HardWareBase:
                 0x0405: self.__fetch_euler,
                 0x0403: self.__fetch_cal_inf,
                 0x0303: self.__fetch_odr,
-                0x0506: self.__fetch_alg_result,
+                0x0507: self.__fetch_alg_result,
                 0x0406: self.__fetch_err_inf,
               }
 
@@ -162,7 +164,7 @@ class HardWareBase:
         ag_x, ag_y, ag_y, ag_w = struct.unpack('<ffff', bytes_data[12:28])
         self.agm_yaw, self.agm_pitch, self.agm_roll = struct.unpack('<fff', bytes_data[28:40])
         agm_x, agm_y, agm_z, agm_w = struct.unpack('<ffff', bytes_data[40:56])
-        print(self.agm_yaw, self.agm_pitch, self.agm_roll)
+        # print(self.agm_yaw, self.agm_pitch, self.agm_roll)
 
     def __fetch_odr(self, data):
         bytes_data = bytes(data)
@@ -201,16 +203,22 @@ class HardWareBase:
         if byte_stream == b'':
             return
 
+        if self.save_log:
+            thread_lock.acquire()
+            self.log_q.put(byte_stream)
+            thread_lock.release()
+
         for packet_data, packet_parts in self.parser.add_data(byte_stream):
             try:
                 # print(hex(packet_parts['event_type']))
+                print(packet_parts['pack_ser'])
                 self.evt_cb[packet_parts['event_type']](packet_parts['user_data'])
             except Exception as e:
                 print(e)
-            if self.save_log:
-                thread_lock.acquire()
-                self.log_q.put(packet_data)
-                thread_lock.release()
+            # if self.save_log:
+            #     thread_lock.acquire()
+            #     self.log_q.put(packet_data)
+            #     thread_lock.release()
 
     def hw_save_log(self, state):
         self.save_log = state
