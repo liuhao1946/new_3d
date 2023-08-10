@@ -27,32 +27,42 @@ class PacketParser:
             yield packet_data, packet_parts
 
     def extract_packet(self):
-        while self.buffer[:4] != b'\xAA\xAA\xAA\xAA' and len(self.buffer) >= 4:
-            self.buffer = self.buffer[1:]
+        while True:
+            # 查找0xAA序列的开始位置，如果未找到或缓冲区长度不足，则返回None
+            while self.buffer[:4] != b'\xAA\xAA\xAA\xAA' and len(self.buffer) >= 4:
+                self.buffer = self.buffer[1:]
+            if len(self.buffer) < 4 + 1 + 2 + 2 + 2:
+                return None
 
-        if len(self.buffer) < 4 + 1 + 2 + 2 + 2:
-            return None
+            # 解包长度和其他字段
+            _, _, payloads_len, _ = struct.unpack('<B H H H', self.buffer[4:4 + 1 + 2 + 2 + 2])
+            packet_length = 4 + 1 + 2 + 2 + payloads_len + 2
 
-        _, _, payloads_len, _ = struct.unpack('<B H H H', self.buffer[4:4 + 1 + 2 + 2 + 2])
-        packet_length = 4 + 1 + 2 + 2 + payloads_len + 2
+            # 如果缓冲区长度不足以包含完整的数据包，则跳过一个字节并继续循环
+            if len(self.buffer) < packet_length:
+                self.buffer = self.buffer[1:]
+                continue
 
-        if len(self.buffer) < packet_length:
-            return None
+            # 提取数据包
+            packet_data = self.buffer[:packet_length]
 
-        packet_data = self.buffer[:packet_length]
+            # 计算校验和
+            sum_check = struct.unpack('<H', self.buffer[4 + 1 + 2 + 2 + payloads_len:4 + 1 + 2 + 2 + payloads_len + 2])[
+                0]
 
-        sum_check = struct.unpack('<H', self.buffer[4 + 1 + 2 + 2 + payloads_len:4 + 1 + 2 + 2 + payloads_len + 2])[0]
+            # 如果校验和不匹配，则跳过当前字节并继续循环
+            if sum_check != sum(packet_data[0:4 + 1 + 2 + 2 + payloads_len]) & 0xFFFF:
+                self.buffer = self.buffer[1:]
+                continue
 
-        if sum_check != sum(packet_data[0:4 + 1 + 2 + 2 + payloads_len]) & 0xFFFF:
-            self.buffer = self.buffer[1:]
-            return None
-
-        self.buffer = self.buffer[packet_length:]
-        return packet_data
+            # 删除已处理的数据包并返回
+            self.buffer = self.buffer[packet_length:]
+            return packet_data
 
     def parse_packet(self, packet_data):
         head = list(packet_data[:4])
-        trans_direction, pack_ser, payloads_len, event_type = struct.unpack('<B H H H', packet_data[4:4 + 1 + 2 + 2 + 2])
+        trans_direction, pack_ser, payloads_len, event_type = struct.unpack('<B H H H',
+                                                                            packet_data[4:4 + 1 + 2 + 2 + 2])
         user_data = list(packet_data[4 + 1 + 2 + 2 + 2:4 + 1 + 2 + 2 + payloads_len])
         sum_check = struct.unpack('<H', packet_data[4 + 1 + 2 + 2 + payloads_len:4 + 1 + 2 + 2 + payloads_len + 2])[0]
 
@@ -70,9 +80,7 @@ class PacketParser:
         if self.last_pack_ser is not None:
             expected_pack_ser = (self.last_pack_ser + 1) % 0x10000
             if packet_parts['pack_ser'] != expected_pack_ser:
-                pass
-                # print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet_parts['pack_ser']}")
-                # print(packet_parts)
+                print(f"Packet loss detected: 期望包序号: {expected_pack_ser}, 实际包序号:{packet_parts['pack_ser']}")
 
         self.last_pack_ser = packet_parts['pack_ser']
 
