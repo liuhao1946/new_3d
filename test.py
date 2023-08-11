@@ -24,16 +24,30 @@ class PacketParser:
             while self.buffer[:4] != b'\xAA\xAA\xAA\xAA' and len(self.buffer) >= 4:
                 self.buffer = self.buffer[1:]
             if len(self.buffer) < 4 + 1 + 2 + 2 + 2:
+                # print("self.buffer len error: %d " % len(self.buffer), self.buffer)
                 return None
 
             # 解包长度和其他字段
             _, _, payloads_len, _ = struct.unpack('<B H H H', self.buffer[4:4 + 1 + 2 + 2 + 2])
             packet_length = 4 + 1 + 2 + 2 + payloads_len + 2
 
-            # 如果缓冲区长度不足以包含完整的数据包，则跳过一个字节并继续循环
+            # 如果缓冲区长度不足以包含完整的数据包，保留现有数据
             if len(self.buffer) < packet_length:
-                self.buffer = self.buffer[1:]
-                continue
+                # print('len(self.buffer) < packet length, %d, %d\n' % (len(self.buffer), packet_length))
+                # print(' '.join("%02x" % v for v in self.buffer))
+                # 如果有5个AA，删除一个
+                if self.buffer[:5] == b'\xAA\xAA\xAA\xAA\xAA':
+                    self.buffer = self.buffer[1:]
+                    continue
+                else:
+                    idx = self.buffer[1:].find(b'\xAA\xAA\xAA\xAA')
+                    if idx >= 0 and (idx < packet_length):
+                        # 数据头后面存在问题数据，删除这包数据的头部
+                        self.buffer = self.buffer[4:]
+                        continue
+                    else:
+                        # 保留数据
+                        return None
 
             # 提取数据包
             packet_data = self.buffer[:packet_length]
@@ -73,10 +87,12 @@ class PacketParser:
             expected_pack_ser = (self.last_pack_ser + 1) % 0x10000
             if packet_parts['pack_ser'] != expected_pack_ser:
                 pass
-                # print(f"Packet loss detected: expected pack_ser={expected_pack_ser}, got {packet_parts['pack_ser']}")
-                # print(packet_parts)
+                # print(f"Packet loss detected: 期望包序号: {expected_pack_ser}(0x{expected_pack_ser:X}) "
+                #      f"实际包序号:{packet_parts['pack_ser']}(0x{packet_parts['pack_ser']:X})")
 
         self.last_pack_ser = packet_parts['pack_ser']
+
+
 
 
 parser = PacketParser()
@@ -96,8 +112,7 @@ byte_stream = [0xAA, 0xAA, 0xAA, 0xAA, 0x01, 0xDE, 0x74, 0x12, 0x00, 0x05, 0x05,
                0x8B, 0xC1, 0xE0, 0x59, 0xC0, 0xBF, 0x58, 0x0B
                ]
 
-byte_stream1 = [0x01, 0xDF, 0x74, 0x0E, 0x00, 0x05, 0x04, 0xAA,
-                0xAA, 0xAA, 0xAA, 0xAA, 0x01, 0xE1, 0x74, 0x3A, 0x00, 0x07, 0x05, 0xAA, 0xA7, 0xAA, 0x3E, 0x4D,
+byte_stream1 = [0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0x01, 0xE1, 0x74, 0x3A, 0x00, 0x07, 0x05, 0xAA, 0xA7, 0xAA, 0x3E, 0x4D,
                 0x17, 0x8B, 0xC1, 0x2B, 0xE6, 0xBF, 0xBF, 0x9C, 0xCB, 0x1A, 0xBE, 0x81, 0xAE, 0x4C, 0xBC, 0xA8, 0x00,
                 0x9F,
                 0xBB, 0xEB, 0x08, 0x7D, 0x3F, 0x06, 0x95, 0x43, 0xC2, 0x3A, 0x17, 0x8B,
@@ -105,6 +120,38 @@ byte_stream1 = [0x01, 0xDF, 0x74, 0x0E, 0x00, 0x05, 0x04, 0xAA,
                 0x2E, 0x8F, 0x66, 0x3F, 0x78, 0x1F,
                 ]
 
-for packet_data, packet_parts in parser.add_data(bytes(byte_stream1)):
+byte_stream2 = [0xaa, 0xaa, 0xaa, 0xaa, 0x01, 0x12, 0x92, 0x12, 0x00, 0x05, 0x05, 0xc1, 0x29, 0xe2, 0xbd, 0x71, 0xa5, 0x07, 0xbb, 0xc7, 0xd2, 0xf9, 0xbc, 0x5b, 0x50, 0x7e, 0x3f, 0x80, 0x0c]
+
+byte_stream3 = [0xaa, 0xaa, 0xaa, 0xaa, 0x01, 0x14, 0x92, 0x12, 0x20, 0x05, 0x05, 0x39, 0x2e, 0xe2, 0xbd, 0x27, 0x7f, 0x07, 0xbb, 0x78, 0xd3, 0xf9, 0xbc, 0x4b, 0x50, 0x7e, 0x3f, 0x31, 0x0b]
+byte_stream4 = [0xaa, 0xaa, 0xaa, 0xaa, 0x01, 0x97, 0x22, 0x12, 0x00, 0x05, 0x05, 0xb3, 0x91, 0x0f, 0xbe, 0xbd, 0xae, 0x7c, 0x3a, 0xf5, 0xea, 0x24, 0xbd, 0xf9, 0x42, 0x7d, 0x3f, 0x67, 0x0c]
+
+byte_stream5 = [0xaa, 0xaa, 0xaa, 0xaa, 0x01, 0x70, 0x24, 0x0e, 0x00, 0x05, 0x04, 0x32, 0x8f, 0x92, 0x40, 0x87, 0xe7, 0x80, 0xc1]
+# 0x56, 0xdd, 0x09, 0xbf, 0x91, 0x09
+byte_stream6 = [0x56, 0xdd, 0x09, 0xbf, 0x91, 0x09]
+
+s1 = "aa aa aa aa 01 91 29 12 00 05 05 8e 89 0f be 6f db 5d 3a a6 ac 24 bd 6e 43 7d 3f e4 0a"
+s2 = "aa aa aa aa 01 97 22 12 00 05 05 b3 91 0f be bd ae 7c 3a f5 ea 24 bd f9 42 7d 3f 67 0c"
+
+s3 = "aa aa aa aa 01 " \
+     "aa aa aa aa 01 dc 10 3a 00 07 05 e3 59 20 3e 6b 08 73 c1 70 e2 78 be 2d 57 07 be 0d e5 fb ba 01 49 d6 ba dc c0 " \
+     "7d 3f 2d e5 92 c2 59 d3 72 c1 80 b1 8a be 6d e6 d5 bd cc 8f a5 bd 19 ac 17 3f f7 70 4b 3f b2 21 " \
+     "aa aa aa aa 01 dd 10 12 00 06 04 49 49 43 5f 48 41 4c 5f 54 49 4d 45 4f 55 54 0a 4b 08 "\
+     "aa aa aa aa 01 de 10 0e 00 05 04 6e 4f 20 3e 03 01 73 c1 f7 e7 79 be 16 09 "\
+     "aa aa aa aa 01 df 10 12 00 05 05 14 53 07 be 03 09 fd ba 02 63 d6 ba ff c0 7d 3f 13 0b"
+
+
+def hex_string_to_list(hex_string: str) -> list:
+    return [int(x, 16) for x in hex_string.split()]
+
+
+bb = hex_string_to_list(s3)
+# print(' '.join("%02x" % v for v in bb))
+
+for packet_data, packet_parts in parser.add_data(bytes(byte_stream)):
     # print(packet_data)
     print(packet_parts)
+
+
+# for packet_data, packet_parts in parser.add_data(bytes(byte_stream6)):
+#     # print(packet_data)
+#     print(packet_parts)

@@ -3,8 +3,6 @@ import threading
 from queue import Queue
 import queue
 import struct
-# from datetime import datetime
-# import binascii
 
 thread_lock = threading.Lock()
 
@@ -32,16 +30,30 @@ class PacketParser:
             while self.buffer[:4] != b'\xAA\xAA\xAA\xAA' and len(self.buffer) >= 4:
                 self.buffer = self.buffer[1:]
             if len(self.buffer) < 4 + 1 + 2 + 2 + 2:
+                # print("self.buffer len error: %d " % len(self.buffer), self.buffer)
                 return None
 
             # 解包长度和其他字段
             _, _, payloads_len, _ = struct.unpack('<B H H H', self.buffer[4:4 + 1 + 2 + 2 + 2])
             packet_length = 4 + 1 + 2 + 2 + payloads_len + 2
 
-            # 如果缓冲区长度不足以包含完整的数据包，则跳过一个字节并继续循环
+            # 如果缓冲区长度不足以包含完整的数据包，保留现有数据
             if len(self.buffer) < packet_length:
-                self.buffer = self.buffer[1:]
-                continue
+                # print('len(self.buffer) < packet length, %d, %d\n' % (len(self.buffer), packet_length))
+                # print(' '.join("%02x" % v for v in self.buffer))
+                # 如果有5个AA，删除一个
+                if self.buffer[:5] == b'\xAA\xAA\xAA\xAA\xAA':
+                    self.buffer = self.buffer[1:]
+                    continue
+                else:
+                    idx = self.buffer[1:].find(b'\xAA\xAA\xAA\xAA')
+                    if idx >= 0 and (idx < packet_length):
+                        # 数据头后面存在问题数据，删除这包数据的头部
+                        self.buffer = self.buffer[4:]
+                        continue
+                    else:
+                        # 保留数据
+                        return None
 
             # 提取数据包
             packet_data = self.buffer[:packet_length]
@@ -80,7 +92,8 @@ class PacketParser:
         if self.last_pack_ser is not None:
             expected_pack_ser = (self.last_pack_ser + 1) % 0x10000
             if packet_parts['pack_ser'] != expected_pack_ser:
-                print(f"Packet loss detected: 期望包序号: {expected_pack_ser}, 实际包序号:{packet_parts['pack_ser']}")
+                print(f"Packet loss detected: 期望包序号: {expected_pack_ser}(0x{expected_pack_ser:X}) "
+                      f"实际包序号:{packet_parts['pack_ser']}(0x{packet_parts['pack_ser']:X})")
 
         self.last_pack_ser = packet_parts['pack_ser']
 
@@ -212,28 +225,19 @@ class HardWareBase:
             return
 
         if self.save_log:
-            thread_lock.acquire()
             self.log_q.put(byte_stream)
-            thread_lock.release()
 
         for packet_data, packet_parts in self.parser.add_data(byte_stream):
             try:
                 # print(hex(packet_parts['event_type']))
-                print(packet_parts['pack_ser'])
+                # print(packet_parts['pack_ser'])
                 self.evt_cb[packet_parts['event_type']](packet_parts['user_data'])
             except Exception as e:
                 print(e)
-            # if self.save_log:
-            #     thread_lock.acquire()
-            #     self.log_q.put(packet_data)
-            #     thread_lock.release()
 
     def hw_save_log(self, state):
         self.save_log = state
-
-        thread_lock.acquire()
-        self.log_q.queue.clear()
-        thread_lock.release()
+        self.hw_read_log()
 
     def hw_write(self, data):
         pass

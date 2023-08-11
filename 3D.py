@@ -133,7 +133,7 @@ class download_thread(QThread):
 
                 rtt_latest_version = self.ver_info['tag_name']
                 print('rtt latest version %s' % rtt_latest_version)
-                log.info('rtt latest version %s' % rtt_latest_version)
+                app_log.info('rtt latest version %s' % rtt_latest_version)
 
                 download_url = self.ver_info['assets'][0]['browser_download_url']
                 tag_name = self.ver_info['assets'][0]['name']
@@ -142,7 +142,7 @@ class download_thread(QThread):
                 print('Download url: %s' % download_url)
                 print('Download path : %s' % filename)
 
-                log.info('Download url: %s' % download_url)
+                app_log.info('Download url: %s' % download_url)
 
                 # # 请求文件
                 response = requests.get(download_url, timeout=5, stream=True)
@@ -161,7 +161,7 @@ class download_thread(QThread):
                             self.download_state_notify.emit('downloading', str(percent))
                             percent_latest = percent
                             print('downloading', percent)
-                log.info('download_done')
+                app_log.info('download_done')
                 print('download_done')
                 self.download_state_notify.emit('download_done', filename)
         except Exception as e:
@@ -413,8 +413,8 @@ class MyWindow(QWidget):
         if not self.com_name_list:
             self.com_name_list.append('')
 
-        log.info("com_des_list:%s" % self.com_des_list)
-        log.info("com_name_list:%s" % self.com_name_list)
+        app_log.info("com_des_list:%s" % self.com_des_list)
+        app_log.info("com_name_list:%s" % self.com_name_list)
 
         try:
             self.setMinimumSize(940, 680)
@@ -457,7 +457,7 @@ class MyWindow(QWidget):
 
             # 第三列
             self.calEdits = []
-            for i, label in enumerate(["acc_cal", "gyr_cal", "hw_mag_cal", "sw_mag_cal"]):
+            for i, label in enumerate(["acc_cal", "gyr_cal", "hw_mag", "sw_mag"]):
                 lbl = QLabel(label)
                 lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 lbl.setFont(font)
@@ -487,7 +487,7 @@ class MyWindow(QWidget):
 
             # 第二列
             self.eulerEdits = []
-            for i, label in enumerate(["pitch", "yaw", "roll", "串口ODR"]):
+            for i, label in enumerate(["pitch", "yaw", "roll", "U_ODR"]):
                 lbl = QLabel(label)
                 lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 lbl.setFont(font)
@@ -602,11 +602,11 @@ class MyWindow(QWidget):
             # test
             # self.version_remind(download_test_json)
 
-            # self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION))
-            # self.ver_detect.ver_remind.connect(self.version_remind)
-            # self.ver_detect.start()
+            self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION))
+            self.ver_detect.ver_remind.connect(self.version_remind)
+            self.ver_detect.start()
         except Exception as e:
-            log.info("error: %s" % str(e))
+            app_log.info("error: %s" % str(e))
 
     def version_remind(self, ver_info):
         print(ver_info)
@@ -643,7 +643,7 @@ class MyWindow(QWidget):
             os.startfile(os.path.dirname(os.path.realpath(sys.argv[0])) + '\\aaa_log_data')
         except Exception as e:
             print(e)
-            log.info(str(e))
+            app_log.info(str(e))
 
     def set_sensor_odr(self):
         u_odr = [125, 250, 500, 500]
@@ -723,7 +723,7 @@ class MyWindow(QWidget):
             cur_ser_num = self.com_name_list[self.com_des_list.index(self.combo1.currentText())]
             cur_baud = int(self.combo2.currentText())
 
-            log.info('串口打开:ser number: %s , baud: %d' % (cur_ser_num, cur_baud))
+            app_log.info('串口打开:ser number: %s , baud: %d' % (cur_ser_num, cur_baud))
             print("ser number: %s" % cur_ser_num)
             print("cur baud: %d" % cur_baud)
             try:
@@ -758,11 +758,11 @@ class MyWindow(QWidget):
                     self.checkbox.setChecked(True)
             except Exception as e:
                 print(e)
-                log.info('错误：%s' % str(e))
+                app_log.info('错误：%s' % str(e))
                 QMessageBox.information(self, "错误:", str(e))
         else:
             try:
-                log.info('串口关闭')
+                app_log.info('串口关闭')
                 self.btn.setText("打开串口")
                 self.btn.setStyleSheet("")
                 # self.checkbox.setChecked(False)
@@ -775,7 +775,7 @@ class MyWindow(QWidget):
 
     def on_btn_reset_clicked(self):
         print("3d reset")
-        log.info('3d reset')
+        app_log.info('3d reset')
         self.opengl.store_current_pose()
         if self.js_cfg['display_angle_ref']:
             self.opengl.set_3d_data_text('Angle refer: pitch(%0.1f) yaw(%0.1f) roll(%0.1f)' %
@@ -822,7 +822,7 @@ class MyWindow(QWidget):
             self.show_alg_output()
         except Exception as e:
             print(e)
-            log.info(str(e))
+            app_log.info(str(e))
 
         self.ser_timer_1s += 1
         if self.ser_timer_1s > 10:
@@ -854,9 +854,6 @@ class MyWindow(QWidget):
                 self.textEdit.append('| II | %0.2f | %0.2f  | %0.2f |' % (t_ag[0], t_ag[1], t_ag[2]))
                 self.textEdit.append('-----------------------------')
 
-                # yaw_1, pitch_1, roll_1 = self.opengl.convert_angles(self.t_ag[0], self.t_ag[1], self.t_ag[2])
-                # yaw_2, pitch_2, roll_2 = self.opengl.convert_angles(t_ag[0], t_ag[1], t_ag[2])
-
                 diff_yaw = (t_ag[0] - self.t_ag[0] + 180 + 360) % 360 - 180
                 diff_pitch = (t_ag[1] - self.t_ag[1] + 180 + 360) % 360 - 180
                 diff_roll = t_ag[2] - self.t_ag[2]
@@ -864,18 +861,18 @@ class MyWindow(QWidget):
                 self.textEdit.append('|diff| %0.2f | %0.2f  | %0.2f |' % (diff_yaw, diff_pitch, diff_roll))
                 self.textEdit.append('-----------------------------\n')
 
-                # # 写标题
-                # if not os.path.exists(self.alg_output_data_file):
-                #     with open(self.alg_output_data_file, 'a', newline='') as file:
-                #         writer = csv.writer(file)
-                #         writer.writerow(['sn', 'yaw1', 'yaw2', 'yaw_diff', 'pitch1', 'pitch2', 'pitch_diff', 'roll1',
-                #                          'roll2', 'roll_diff'])
-                # with open(self.alg_output_data_file, 'a', newline='') as file:
-                #     self.sn += 1
-                #     writer = csv.writer(file)
-                #     writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
-                #                      '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
-                #                      '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
+                # 写标题
+                if not os.path.exists(self.alg_output_data_file):
+                    with open(self.alg_output_data_file, 'a', newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(['sn', 'yaw1', 'yaw2', 'yaw_diff', 'pitch1', 'pitch2', 'pitch_diff', 'roll1',
+                                         'roll2', 'roll_diff'])
+                with open(self.alg_output_data_file, 'a', newline='') as file:
+                    self.sn += 1
+                    writer = csv.writer(file)
+                    writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
+                                     '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
+                                     '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
 
             self.textEdit.verticalScrollBar().setValue(self.textEdit.verticalScrollBar().maximum())  # 滚动到底部
 
@@ -923,12 +920,12 @@ class MyWindow(QWidget):
         try:
             self.opengl.rotate_relative_to_base(w, x, y, z)
         except ValueError as v:
-            log.info(str(v))
+            app_log.info(str(v))
             print(v)
 
     def closeEvent(self, event):
         print("Window is closing...")
-        log.info("Window is closing...\n")
+        app_log.info("Window is closing...\n")
 
         self.worker.requestInterruption()
 
@@ -953,7 +950,7 @@ def hw_error(err):
     ser_obj.hw_close()
     ex.btn.setText("打开串口")
     ex.btn.setStyleSheet("")
-    log.info("错误: %s\n" % str(err))
+    app_log.info("错误: %s\n" % str(err))
     print("错误: %s\n" % str(err))
 
 
@@ -964,6 +961,8 @@ def hw_warn(err):
 if __name__ == '__main__':
     log.basicConfig(filename='3D.log', filemode='w', level=log.INFO, format='%(asctime)s %(message)s',
                     datefmt='%Y/%m/%d %I:%M:%S')
+    app_log = log.getLogger('app_log')
+
     ser_obj = bds_ser.BDS_Serial(hw_error, hw_warn, char_format='hex')
     app = QApplication(sys.argv)
     ex = MyWindow(ser_obj)
