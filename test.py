@@ -155,3 +155,11 @@ for packet_data, packet_parts in parser.add_data(bytes(byte_stream)):
 # for packet_data, packet_parts in parser.add_data(bytes(byte_stream6)):
 #     # print(packet_data)
 #     print(packet_parts)
+
+
+import re
+
+CWM_VERSION = 'Cyweemotion 3D(v1.3.0)'
+
+print(re.search(r'\((.*?)\)', CWM_VERSION).group(1))
+

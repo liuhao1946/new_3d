@@ -1,7 +1,9 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QByteArray, QMutex, pyqtSlot
+from PyQt5.QtGui import QPainter, QColor, QFont
 from PyQt5.QtWidgets import QMessageBox, QDialog, QTextEdit, QSizePolicy, QAction, QProgressBar, QVBoxLayout
+from PyQt5.QtWidgets import QStatusBar
 import time
 import bds.bds_serial as bds_ser
 from PyQt5.QtGui import QPixmap, QIcon, QFont
@@ -20,7 +22,7 @@ download_test_json = {'id': 326968, 'tag_name': 'v1.2.1', 'target_commitish': 'd
 
 global ser_obj
 
-CWM_VERSION = 'Cyweemotion 3D(v1.3.0)'
+CWM_VERSION = 'Cyweemotion 3D(v1.3.1)'
 
 package_number = 0
 
@@ -104,6 +106,7 @@ class VerDetectWorker(QThread):
                                           timeout=5).json()[-1]
             log.info('download source: gitee')
 
+            print(self.ver, latest_release['tag_name'])
             if self.ver != latest_release['tag_name']:
                 # ver_info = '软件更新:' + latest_release['tag_name'] + '\n'
                 # ver_info += latest_release['body']
@@ -265,7 +268,7 @@ class Worker(QThread):
             ser_obj.hw_read()
 
             xyzw = ser_obj.read_xyzw()
-            euler = ser_obj.read_euler()
+            # euler = ser_obj.read_euler()
             if xyzw:
                 x, y, z, w = xyzw[-1]
 
@@ -279,13 +282,13 @@ class Worker(QThread):
                     self.quatDataReceived.emit(w, x, y, z)
                     quat_display_clk = 0
 
-            if euler:
-                # serail rx: [yaw, pitch, roll]
-                euler_display_clk += 1
-                yaw, pitch, roll = euler[-1]
-                if euler_display_clk >= 20:
-                    self.eulerDataReceived.emit(yaw, pitch, roll)
-                    euler_display_clk = 0
+            # if euler:
+            #     # serail rx: [yaw, pitch, roll]
+            #     euler_display_clk += 1
+            #     yaw, pitch, roll = euler[-1]
+            #     if euler_display_clk >= 20:
+            #         self.eulerDataReceived.emit(yaw, pitch, roll)
+            #         euler_display_clk = 0
 
             # 计算数据率
             data_packets_len += len(xyzw)
@@ -386,12 +389,14 @@ class MyWindow(QWidget):
 
         self.cfg_dialog_startup = False
         self.log_file_name = ''
+        self.euler_log_file_name = ''
         self.sensor_odr = -1
 
         self.alg_output_data_file = 'aaa_log_data\\' + 'alg_output_data_' + datetime.datetime.now().strftime(
             '%Y-%m-%d_%H_%M_%S') + '.csv '
         self.t_ag = []
         self.sn = 0
+        # self.state_dic = {'串口ODR': 0, '传感器ODR': 0}
 
         self.exe_file_name = ''
 
@@ -510,11 +515,6 @@ class MyWindow(QWidget):
             self.save_data.stateChanged.connect(self.save_data_cb)
             grid.addWidget(self.save_data, 4, 5)
 
-            # self.btn_cfg = QPushButton("配置")
-            # # self.btn_cfg.setFixedWidth(180)
-            # self.btn_cfg.clicked.connect(self.show_dialog)
-            # grid.addWidget(self.btn_cfg, 4, 5)
-
             # 第四行的按钮一次对齐到第三行的文本输入框
             self.btn_reset = QPushButton("复位姿态")
             self.btn_reset.setFixedWidth(180)
@@ -531,6 +531,7 @@ class MyWindow(QWidget):
             # grid.addWidget(QLabel(""), 4, 0, 1, 6)
             self.opengl = bds_3d.OpenGLWidget()
             # 起始行6，起始列0，行占用9，列占用5
+            # self.opengl.setContentsMargins(0, 0, 0, 20)
             grid.addWidget(self.opengl, 6, 0, 9, 7)
 
             # log文本框
@@ -569,17 +570,10 @@ class MyWindow(QWidget):
             self.set_ODR.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             grid.addWidget(self.set_ODR, 12, 8)
 
-            # 获得ODR
-            self.odr_edit = QLineEdit("")  # 创建文本输入框并设置默认值为500
-            self.odr_edit.setReadOnly(True)
-            self.odr_edit.setFixedWidth(140)
-            self.odr_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            grid.addWidget(self.odr_edit, 13, 7)  # 将文本输入框添加到布局中，位于按钮的旁边
-
-            self.get_odr_bnt = QPushButton("获得传感器ODR(HZ)")
-            self.get_odr_bnt.clicked.connect(self.get_odr)
-            self.get_odr_bnt.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            grid.addWidget(self.get_odr_bnt, 13, 8)
+            self.odr_status_bar = QLabel("串口ODR: 0Hz 传感器ODR: 0Hz")
+            self.odr_status_bar.setMaximumHeight(20)
+            self.odr_status_bar.setStyleSheet("color: red; font-weight: bold;")
+            grid.addWidget(self.odr_status_bar, 15, 0, 1, 2)
 
             # --------------------------------------------------
             self.setLayout(grid)
@@ -589,7 +583,7 @@ class MyWindow(QWidget):
             # 新建一个10ms的精准定时器
             self.timer = QTimer()
             self.timer.timeout.connect(self.on_timer)
-            self.timer.start(100)
+            self.timer.start(10)
 
             # 创建新线程
             self.worker = Worker(self.js_cfg)
@@ -602,11 +596,12 @@ class MyWindow(QWidget):
             # test
             # self.version_remind(download_test_json)
 
-            self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION))
+            self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION).group(1))
             self.ver_detect.ver_remind.connect(self.version_remind)
             self.ver_detect.start()
         except Exception as e:
             app_log.info("error: %s" % str(e))
+
 
     def version_remind(self, ver_info):
         print(ver_info)
@@ -655,15 +650,14 @@ class MyWindow(QWidget):
         ser_obj.hw_write(ser_protocol_data([0x03, 0x03], []))
 
     def get_alg_result(self):
-        if self.get_alg_output_count >= 2:
-            self.get_alg_output_count = 0
         ser_obj.hw_write(ser_protocol_data([0x07, 0x05], []))
-        self.get_alg_output_count += 1
-        time.sleep(0.05)
+        # self.get_alg_output_count += 1
+        time.sleep(0.03)
 
     def reset_cal_mf(self):
         self.cal_ser = 0
-        self.get_alg_output_count = 0
+        self.sn = 0
+        # self.get_alg_output_count = 0
         self.alg_output_data_file = 'aaa_log_data\\' + 'alg_output_data_' + \
                                     datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.csv '
 
@@ -673,6 +667,8 @@ class MyWindow(QWidget):
         if state:
             self.log_file_name = 'aaa_log_data\\' + 'log_' + \
                                  datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.bin '
+            self.euler_log_file_name = 'aaa_log_data\\' + 'euler_log_' + \
+                                 datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.csv '
 
     def save_log_to_file(self, file_name, data_bytes):
         if data_bytes == b'':
@@ -825,11 +821,27 @@ class MyWindow(QWidget):
             app_log.info(str(e))
 
         self.ser_timer_1s += 1
-        if self.ser_timer_1s > 10:
+        if self.ser_timer_1s > 100:
             self.ser_timer_1s = 0
 
             self.ser_hot_plug_timer_detect()
             self.save_log_to_file(self.log_file_name, ser_obj.hw_read_log())
+
+    def save_euler2file(self, file_name, euler):
+        if not os.path.exists(file_name):
+            with open(file_name, 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['yaw_1', 'yaw_1', 'yaw_2', 'yaw_diff', 'pitch_1', 'pitch_2', 'pitch_diff',
+                                 'roll_1', 'roll_2', 'roll_diff'])
+
+        with open(file_name, 'a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
+                             '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
+                             '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
+        # self.euler_log_file_name
+        pass
+        # euler = ser_obj.read_euler()
 
     def show_alg_output(self):
         ag = ser_obj.hw_read_ag_alg_output()
@@ -842,16 +854,15 @@ class MyWindow(QWidget):
             t_ag = agm
 
         if t_ag:
-            if self.get_alg_output_count == 1:
+            self.sn += 1
+            if self.sn == 1:
                 self.textEdit.append('******************************')
-                self.textEdit.append('|    | Yaw   | Pitch | Roll  |')
+                self.textEdit.append('|    | Yaw   | Pitch  | Roll  |')
                 self.textEdit.append('------------------------------')
-                self.textEdit.append('| I  | %0.2f | %0.2f  | %0.2f |' % (t_ag[0], t_ag[1], t_ag[2]))
-                self.t_ag = t_ag
-            elif self.get_alg_output_count == 2:
-                self.get_alg_output_count = 0
+                self.textEdit.append('| %d | %0.2f | %0.2f  | %0.2f |' % (self.sn, t_ag[0], t_ag[1], t_ag[2]))
+            else:
                 self.textEdit.append('-----------------------------')
-                self.textEdit.append('| II | %0.2f | %0.2f  | %0.2f |' % (t_ag[0], t_ag[1], t_ag[2]))
+                self.textEdit.append('| %d | %0.2f | %0.2f  | %0.2f |' % (self.sn, t_ag[0], t_ag[1], t_ag[2]))
                 self.textEdit.append('-----------------------------')
 
                 diff_yaw = (t_ag[0] - self.t_ag[0] + 180 + 360) % 360 - 180
@@ -859,28 +870,28 @@ class MyWindow(QWidget):
                 diff_roll = t_ag[2] - self.t_ag[2]
 
                 self.textEdit.append('|diff| %0.2f | %0.2f  | %0.2f |' % (diff_yaw, diff_pitch, diff_roll))
-                self.textEdit.append('-----------------------------\n')
+                self.textEdit.append('-----------------------------')
 
                 # 写标题
                 if not os.path.exists(self.alg_output_data_file):
                     with open(self.alg_output_data_file, 'a', newline='') as file:
                         writer = csv.writer(file)
-                        writer.writerow(['sn', 'yaw1', 'yaw2', 'yaw_diff', 'pitch1', 'pitch2', 'pitch_diff', 'roll1',
-                                         'roll2', 'roll_diff'])
+                        writer.writerow(['sn', 'yaw_1', 'yaw_2', 'yaw_diff', 'pitch_1', 'pitch_2', 'pitch_diff',
+                                         'roll_1', 'roll_2', 'roll_diff'])
                 with open(self.alg_output_data_file, 'a', newline='') as file:
-                    self.sn += 1
                     writer = csv.writer(file)
                     writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
                                      '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
                                      '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
 
             self.textEdit.verticalScrollBar().setValue(self.textEdit.verticalScrollBar().maximum())  # 滚动到底部
+            self.t_ag = t_ag
 
     def show_odr(self):
         sensor_odr, uart_odr = ser_obj.read_odr()
         if self.sensor_odr != sensor_odr:
             self.sensor_odr = sensor_odr
-            self.odr_edit.setText('S_ODR: %d, U_ODR: %d' % (sensor_odr, uart_odr))
+            self.odr_status_bar.setText("串口ODR:{}Hz, 传感器ODR:{}Hz".format(uart_odr, sensor_odr))
 
     def ser_hot_plug_timer_detect(self):
         default_des = bds_ser.ser_hot_plug_detect(self.combo1.currentText(), self.com_des_list, self.com_name_list)
