@@ -133,11 +133,8 @@ class BDS_Serial(HardWareBase):
         try:
             if self.ser_is_start:
                 bytes_data = self.ser.read_all()
-                try:
-                    if self.char_format == 'hex':
-                        self.hw_data_hex_handle(bytes_data)
-                except Exception as e:
-                    self.err_cb('Serial:%s\n' % e)
+                if self.char_format == 'hex':
+                    self.hw_data_hex_handle(bytes_data)
         except Exception as e:
             self.err_cb('Serial:%s\n' % e)
 

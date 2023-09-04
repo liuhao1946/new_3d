@@ -93,7 +93,8 @@ class PacketParser:
             expected_pack_ser = (self.last_pack_ser + 1) % 0x10000
             if packet_parts['pack_ser'] != expected_pack_ser:
                 print(f"Packet loss detected: 期望包序号: {expected_pack_ser}(0x{expected_pack_ser:X}) "
-                      f"实际包序号:{packet_parts['pack_ser']}(0x{packet_parts['pack_ser']:X})")
+                      f"实际包序号:{packet_parts['pack_ser']}(0x{packet_parts['pack_ser']:X})"
+                      f"事件类型:{packet_parts['event_type']:X}")
 
         self.last_pack_ser = packet_parts['pack_ser']
 
@@ -143,6 +144,9 @@ class HardWareBase:
         self.packet_counter = 0
         self.sensor_odr = 0
         self.uart_odr = 0
+        self.sw_version = ''
+        self.alg_version = ''
+        self.dml_version = ''
 
         self.ag_yaw = -1000
         self.ag_pitch = -1000
@@ -158,6 +162,8 @@ class HardWareBase:
                 0x0303: self.__fetch_odr,
                 0x0507: self.__fetch_alg_result,
                 0x0406: self.__fetch_err_inf,
+                0x0101: self.__fetch_sw_version,
+                0x0201: self.__fetch_alg_version,
               }
 
     def hw_open(self, **kwargs):
@@ -177,6 +183,18 @@ class HardWareBase:
 
     def __fetch_err_inf(self, data):
         self.err_q.put(''.join([chr(v) for v in data]))
+
+    def __fetch_sw_version(self, data):
+        self.sw_version = ''.join([chr(v) for v in data[32:32+32] if v != 0])
+        print('sw_version:%s' % self.sw_version)
+
+    def __fetch_alg_version(self, data):
+        bytes_data = bytes(data)
+        d = struct.unpack('<IIII', bytes_data[0:16])
+        a = struct.unpack('<IIII', bytes_data[24:40])
+        self.dml_version = '.'.join([str(i) for i in d])
+        self.alg_version = '.'.join([str(i) for i in a])
+        print('dml ver: %s, alg ver: %s' % (self.dml_version, self.alg_version))
 
     def __fetch_alg_result(self, data):
         bytes_data = bytes(data)
@@ -233,7 +251,7 @@ class HardWareBase:
                 # print(packet_parts['pack_ser'])
                 self.evt_cb[packet_parts['event_type']](packet_parts['user_data'])
             except Exception as e:
-                print(e)
+                self.warn_cb(e)
 
     def hw_save_log(self, state):
         self.save_log = state
@@ -317,6 +335,12 @@ class HardWareBase:
         self.agm_yaw = self.agm_pitch = self.agm_roll = -1000
 
         return agm
+
+    def hw_read_sw_version(self):
+        return self.sw_version
+
+    def hw_read_alg_version(self):
+        return self.dml_version, self.alg_version
 
 
 if __name__ == '__main__':

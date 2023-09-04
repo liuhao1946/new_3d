@@ -1,9 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QComboBox, QPushButton, QLineEdit, QCheckBox
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QByteArray, QMutex, pyqtSlot
-from PyQt5.QtGui import QPainter, QColor, QFont
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QByteArray, QMutex
 from PyQt5.QtWidgets import QMessageBox, QDialog, QTextEdit, QSizePolicy, QAction, QProgressBar, QVBoxLayout
-from PyQt5.QtWidgets import QStatusBar
 import time
 import bds.bds_serial as bds_ser
 from PyQt5.QtGui import QPixmap, QIcon, QFont
@@ -17,12 +15,33 @@ import csv
 import os
 import requests
 import re
+from collections import defaultdict
 
-download_test_json = {'id': 326968, 'tag_name': 'v1.2.1', 'target_commitish': 'd1ead002c3591d91ae442965d019d76da0cb395f', 'prerelease': False, 'name': 'v1.2.1', 'body': '1、新增log显示区域\r\n2、新增录制原始数据log\r\n3、新增欧拉角求差并保存到文件\r\n4、新增一键跳转按钮', 'author': {'id': 13296607, 'login': 'cyweemotion-public', 'name': 'cyweemotion_public', 'avatar_url': 'https://gitee.com/assets/no_portrait.png', 'url': 'https://gitee.com/api/v5/users/cyweemotion-public', 'html_url': 'https://gitee.com/cyweemotion-public', 'remark': '', 'followers_url': 'https://gitee.com/api/v5/users/cyweemotion-public/followers', 'following_url': 'https://gitee.com/api/v5/users/cyweemotion-public/following_url{/other_user}', 'gists_url': 'https://gitee.com/api/v5/users/cyweemotion-public/gists{/gist_id}', 'starred_url': 'https://gitee.com/api/v5/users/cyweemotion-public/starred{/owner}{/repo}', 'subscriptions_url': 'https://gitee.com/api/v5/users/cyweemotion-public/subscriptions', 'organizations_url': 'https://gitee.com/api/v5/users/cyweemotion-public/orgs', 'repos_url': 'https://gitee.com/api/v5/users/cyweemotion-public/repos', 'events_url': 'https://gitee.com/api/v5/users/cyweemotion-public/events{/privacy}', 'received_events_url': 'https://gitee.com/api/v5/users/cyweemotion-public/received_events', 'type': 'User'}, 'created_at': '2023-08-09T13:13:25+08:00', 'assets': [{'browser_download_url': 'https://gitee.com/cyweemotion-public/cwm_3d/releases/download/v1.2.1/CWM_3D.msi', 'name': 'CWM_3D.msi'}, {'browser_download_url': 'https://gitee.com/cyweemotion-public/cwm_3d/archive/refs/tags/v1.2.1.zip'}]}
+download_test_json = {'id': 326968, 'tag_name': 'v1.2.1',
+                      'target_commitish': 'd1ead002c3591d91ae442965d019d76da0cb395f', 'prerelease': False,
+                      'name': 'v1.2.1',
+                      'body': '1、新增log显示区域\r\n2、新增录制原始数据log\r\n3、新增欧拉角求差并保存到文件\r\n4、新增一键跳转按钮',
+                      'author': {'id': 13296607, 'login': 'cyweemotion-public', 'name': 'cyweemotion_public',
+                                 'avatar_url': 'https://gitee.com/assets/no_portrait.png',
+                                 'url': 'https://gitee.com/api/v5/users/cyweemotion-public',
+                                 'html_url': 'https://gitee.com/cyweemotion-public', 'remark': '',
+                                 'followers_url': 'https://gitee.com/api/v5/users/cyweemotion-public/followers',
+                                 'following_url': 'https://gitee.com/api/v5/users/cyweemotion-public/following_url{/other_user}',
+                                 'gists_url': 'https://gitee.com/api/v5/users/cyweemotion-public/gists{/gist_id}',
+                                 'starred_url': 'https://gitee.com/api/v5/users/cyweemotion-public/starred{/owner}{/repo}',
+                                 'subscriptions_url': 'https://gitee.com/api/v5/users/cyweemotion-public/subscriptions',
+                                 'organizations_url': 'https://gitee.com/api/v5/users/cyweemotion-public/orgs',
+                                 'repos_url': 'https://gitee.com/api/v5/users/cyweemotion-public/repos',
+                                 'events_url': 'https://gitee.com/api/v5/users/cyweemotion-public/events{/privacy}',
+                                 'received_events_url': 'https://gitee.com/api/v5/users/cyweemotion-public/received_events',
+                                 'type': 'User'}, 'created_at': '2023-08-09T13:13:25+08:00', 'assets': [
+        {'browser_download_url': 'https://gitee.com/cyweemotion-public/cwm_3d/releases/download/v1.2.1/CWM_3D.msi',
+         'name': 'CWM_3D.msi'},
+        {'browser_download_url': 'https://gitee.com/cyweemotion-public/cwm_3d/archive/refs/tags/v1.2.1.zip'}]}
 
 global ser_obj
 
-CWM_VERSION = 'Cyweemotion 3D(v1.3.1)'
+CWM_VERSION = 'Cyweemotion 3D(v1.4.0)'
 
 package_number = 0
 
@@ -168,11 +187,11 @@ class download_thread(QThread):
                 print('download_done')
                 self.download_state_notify.emit('download_done', filename)
         except Exception as e:
-                print(e)
-                try:
-                    self.download_state_notify.emit('download_err',  str(e))
-                except:
-                    pass
+            print(e)
+            try:
+                self.download_state_notify.emit('download_err', str(e))
+            except:
+                pass
 
 
 class DownloadDialog(QDialog):
@@ -248,7 +267,6 @@ class DownloadDialog(QDialog):
 
 
 class Worker(QThread):
-    eulerDataReceived = pyqtSignal(float, float, float)
     quatDataReceived = pyqtSignal(float, float, float, float)
     quatDataReceived_3d = pyqtSignal(float, float, float, float)
     dtDataReceived = pyqtSignal(float)
@@ -268,7 +286,6 @@ class Worker(QThread):
             ser_obj.hw_read()
 
             xyzw = ser_obj.read_xyzw()
-            # euler = ser_obj.read_euler()
             if xyzw:
                 x, y, z, w = xyzw[-1]
 
@@ -281,14 +298,6 @@ class Worker(QThread):
                 if quat_display_clk >= 20:
                     self.quatDataReceived.emit(w, x, y, z)
                     quat_display_clk = 0
-
-            # if euler:
-            #     # serail rx: [yaw, pitch, roll]
-            #     euler_display_clk += 1
-            #     yaw, pitch, roll = euler[-1]
-            #     if euler_display_clk >= 20:
-            #         self.eulerDataReceived.emit(yaw, pitch, roll)
-            #         euler_display_clk = 0
 
             # 计算数据率
             data_packets_len += len(xyzw)
@@ -367,7 +376,7 @@ class Dialog(QDialog):
 
 
 class MyWindow(QWidget):
-    def __init__(self, obj):
+    def __init__(self, obj, base_interval=10):
         super().__init__()
 
         # 读取json配置文件
@@ -378,7 +387,6 @@ class MyWindow(QWidget):
         self.baud_list = self.js_cfg['ser_baud']
         self.baud = 115200
         self.obj = obj
-        self.ser_timer_1s = 0
 
         self.get_alg_output_count = 0
 
@@ -396,9 +404,29 @@ class MyWindow(QWidget):
             '%Y-%m-%d_%H_%M_%S') + '.csv '
         self.t_ag = []
         self.sn = 0
-        # self.state_dic = {'串口ODR': 0, '传感器ODR': 0}
+
+        self.base_interval = base_interval
+        self.callbacks = defaultdict(list)  # 存储各个时间间隔的回调函数
 
         self.exe_file_name = ''
+        self.sw_version = ''
+        self.alg_version = ''
+        self.dml_version = ''
+
+        self.save_euler2file_flag = False
+        self.euler_log_sn = 0
+        self.euler = []
+
+        self.reg_timer_cb(100, self.read_euler)
+        self.reg_timer_cb(10, self.show_cal_state)
+        self.reg_timer_cb(10, self.show_odr)
+        self.reg_timer_cb(10, self.show_mf_err)
+        self.reg_timer_cb(10, self.show_alg_output)
+        self.reg_timer_cb(1000, self.ser_hot_plug_timer_detect)
+        self.reg_timer_cb(1100, self.save_bin2file)
+        self.reg_timer_cb(1000, self.save_euler2file)
+        self.reg_timer_cb(300, self.show_sw_version)
+        self.reg_timer_cb(300, self.show_alg_version)
 
         exe_icon = b'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAA99JREFUaEPtmVtIFGEUx/9n1m72FIRQFAnZbSN0VyM0o8DsspuFuK4+9ZR0oZforQcffCvwJXqICgoqUFtSLJcgDKMQ19Cxi2ZGdLGHKHpJK5FmTnyzKXuZdWZ3Z6yN/UAGnO875/8758y3M+cjZPigDNePLMDfzqClGWAG4V6RDwrtgEQbwFyoARI9hcqv4OBH2DcUIAJbBW4JAHcVbwGrtSD4AGwyEPcSjABIukXegefpgqQMwG3OhVi60KeJZqpOSQhxuwbzfTpA/pHpVGwkDcCdxW44VBFp8bcuFac6a14DCECRAnRwYDAZm6YA+E5x7qxoRlUyDpKeS7gzC1M18MNovSEAB12nwTgJIN/ImMX334FwgTxy81x2EwJw0OUEcB6MCouFJWeO0A2H0kB7n73VW6gL8Ed8Gxibk/Nm02xCDxzKAdr77HusB32ALtcTACU2yUnV7BXyyg2GABx014G5JVUvtq5TsZuq5O5IH3EZ4C73XYC9kZNGxgn1zRLE9UAJ40ilql2tHIFewrUHEu7JBOdqRstpVbtGDUIneeRDBgCuVwDWR056OEyoaHRE2VqxDGjYo8Jfxti4KjWYobdCNKH1sYQv36K1djcp2Lk5zu4YeeUNcwME3T/BvDg2uvXNDogo6Q2RjdrtKqq3MXIXzZ2XySngeo+k2RKB0Ru+MpEBJf4W0RR5BpcYZSBhOEXE2kOEjj7C8Hi8c5EV/x+Qcme0GSFWiA70xkdbCMrPA3ylKmrKGFsLEmeUvHKUY51nwGWqHjr7BYyEjhBh4md8sNavZJQUAIsXMPrGSHt+9IbHzfCVhYUvNcieWG8ZwIyYj1+BjpCE9r7EJRErfE0eo7aUDaOtB2w5QKST3tFwid3uI7z/rB/xs4dVHNunmor2vAPE7lxnbkgIjYVBVi8HLp1QUFloqkIT7gS2ZiDWa05Nzuy/bp5SUFeennhbnoFEoXrxgVB0KvzbIbbWT1d/GW6xc2/A4bvzloHL9yUcvyhpTkXkRQasGPMG0NQmoak1DNBYp6LRr1qhf/4ykAVIkK9sCZkt5GwJpVFC4tUs7nXabORn5tmUgSnyyoav0y8BbExWcOx8mwBGyStHtS5NfVKmAmMLgKlPSos+6m0BMPNRL6LNFrRVbAAw11bRAMJdubQaW5GNgP5zCtxr03gTZX6MH9P7yT8yGVvOtrYWB98QJqag110w/1iJ1iKko+QZeKO36P9t7kbSZnR7PTZtGXnAoVd7GXvEpAuTiYd8uiAzx6yqtAvEztnzBcIwmEYgqT3/5DGr+T3R+pmG26j1Lq21mAWwNp7JW/sNV5joQICi7RQAAAAASUVORK5CYII='
 
@@ -575,6 +603,16 @@ class MyWindow(QWidget):
             self.odr_status_bar.setStyleSheet("color: red; font-weight: bold;")
             grid.addWidget(self.odr_status_bar, 15, 0, 1, 2)
 
+            self.sw_ver_status_bar = QLabel("SW_Ver:")
+            self.sw_ver_status_bar.setMaximumHeight(20)
+            self.sw_ver_status_bar.setStyleSheet("color: red; font-weight: bold;")
+            grid.addWidget(self.sw_ver_status_bar, 15, 2, 1, 2)
+
+            self.alg_ver_status_bar = QLabel("")
+            self.alg_ver_status_bar.setMaximumHeight(20)
+            self.alg_ver_status_bar.setStyleSheet("color: red; font-weight: bold;")
+            grid.addWidget(self.alg_ver_status_bar, 15, 4, 1, 4)
+
             # --------------------------------------------------
             self.setLayout(grid)
             self.setWindowTitle(CWM_VERSION)
@@ -587,7 +625,7 @@ class MyWindow(QWidget):
 
             # 创建新线程
             self.worker = Worker(self.js_cfg)
-            self.worker.eulerDataReceived.connect(self.on_euler_data_received)
+            # self.worker.eulerDataReceived.connect(self.on_euler_data_received)
             self.worker.quatDataReceived.connect(self.on_quat_data_received)
             self.worker.quatDataReceived_3d.connect(self.on_quat_data_received_3d)
             self.worker.dtDataReceived.connect(self.on_dt_data_received)
@@ -595,13 +633,11 @@ class MyWindow(QWidget):
 
             # test
             # self.version_remind(download_test_json)
-
             self.ver_detect = VerDetectWorker(re.search(r'\((.*?)\)', CWM_VERSION).group(1))
             self.ver_detect.ver_remind.connect(self.version_remind)
             self.ver_detect.start()
         except Exception as e:
             app_log.info("error: %s" % str(e))
-
 
     def version_remind(self, ver_info):
         print(ver_info)
@@ -610,7 +646,6 @@ class MyWindow(QWidget):
 
         if download_dialog.exe_file_name != '':
             self.exe_file_name = download_dialog.exe_file_name
-
             self.close_timer = QTimer()
             self.close_timer.setSingleShot(True)  # 设置为单次定时器
             self.close_timer.timeout.connect(self.closeWindow)  # 连接 timeout 信号到 self.close 方法
@@ -618,6 +653,18 @@ class MyWindow(QWidget):
 
     def closeWindow(self):
         self.close()
+
+    def show_sw_version(self):
+        sw_ver = ser_obj.hw_read_sw_version()
+        if sw_ver != self.sw_version:
+            self.sw_version = sw_ver
+            self.sw_ver_status_bar.setText('SW_Ver:%s' % self.sw_version)
+
+    def show_alg_version(self):
+        dml_ver, alg_ver = ser_obj.hw_read_alg_version()
+        if dml_ver != self.dml_version or alg_ver != self.alg_version:
+            self.dml_version, self.alg_version = dml_ver, alg_ver
+            self.alg_ver_status_bar.setText('DML Ver:%s, ALG Ver:%s' % (dml_ver, alg_ver))
 
     def showContextMenu(self, position):
         # 创建标准上下文菜单
@@ -645,35 +692,45 @@ class MyWindow(QWidget):
         cur_s_odr = uint_to_b(int(self.ODR_com.currentText()))
         cur_u_odr = short_to_b(u_odr[self.ODR_com.currentIndex()])
         ser_obj.hw_write(ser_protocol_data([0x02, 0x03], cur_s_odr + cur_u_odr))
+        time.sleep(0.01)
+        ser_obj.hw_write(ser_protocol_data([0x03, 0x03], []))
 
     def get_odr(self):
         ser_obj.hw_write(ser_protocol_data([0x03, 0x03], []))
 
     def get_alg_result(self):
         ser_obj.hw_write(ser_protocol_data([0x07, 0x05], []))
-        # self.get_alg_output_count += 1
         time.sleep(0.03)
+
+    def get_alg_version(self):
+        ser_obj.hw_write(ser_protocol_data([0x01, 0x02], []))
 
     def reset_cal_mf(self):
         self.cal_ser = 0
         self.sn = 0
-        # self.get_alg_output_count = 0
         self.alg_output_data_file = 'aaa_log_data\\' + 'alg_output_data_' + \
                                     datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.csv '
 
     def save_data_cb(self, state):
         state = True if state == Qt.Checked else False
         ser_obj.hw_save_log(state)
+        self.save_euler2file_flag = state
         if state:
             self.log_file_name = 'aaa_log_data\\' + 'log_' + \
                                  datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.bin '
             self.euler_log_file_name = 'aaa_log_data\\' + 'euler_log_' + \
-                                 datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.csv '
+                                       datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.csv '
+            with open(self.euler_log_file_name, 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['sn', 'yaw', 'pitch', 'roll'])
+            self.euler = []
+            self.euler_log_sn = 0
 
-    def save_log_to_file(self, file_name, data_bytes):
+    def save_bin2file(self):
+        data_bytes = ser_obj.hw_read_log()
         if data_bytes == b'':
             return
-        with open(file_name, 'ab') as file:
+        with open(self.log_file_name, 'ab') as file:
             file.write(data_bytes)
 
     def on_checkbox_state_changed(self, state):
@@ -744,6 +801,11 @@ class MyWindow(QWidget):
                     # 获得ODR
                     self.get_odr()
                     time.sleep(0.03)
+                    # 获得版本号
+                    self.get_sw_version()
+                    time.sleep(0.02)
+                    self.get_alg_version()
+                    time.sleep(0.02)
 
                     # 获得欧拉角、四元数
                     quat_open(True)
@@ -788,6 +850,9 @@ class MyWindow(QWidget):
     def error_rpt(self, err_code):
         QMessageBox.information(self, "错误:", err_code)
 
+    def get_sw_version(self):
+        ser_obj.hw_write(ser_protocol_data([0x01, 0x01], []))
+
     def show_cal_state(self):
         a_cal_state = ser_obj.read_a_cal_state()
         g_cal_state = ser_obj.read_g_cal_state()
@@ -810,82 +875,101 @@ class MyWindow(QWidget):
             self.calEdits[3].setText("%d" % sf_mag_cal_state)
             self.sf_mag_cal_state_last = sf_mag_cal_state
 
+    def reg_timer_cb(self, interval, callback):
+        # 注册回调函数到指定的时间间隔
+        if interval % self.base_interval != 0:
+            raise ValueError("Interval must be a multiple of the base interval.")
+        counter = [0]  # 用于跟踪时间的计数器
+        self.callbacks[interval].append((callback, counter))
+
     def on_timer(self):
-        self.show_cal_state()
-        self.show_odr()
-        self.show_mf_err()
         try:
-            self.show_alg_output()
+            # 每次基础时间间隔到达时被调用
+            for interval, callbacks in self.callbacks.items():
+                if interval % self.base_interval != 0:
+                    continue  # 如果时间间隔不是基础时间间隔的倍数，则忽略
+
+                for cb, counter in callbacks:
+                    counter[0] += self.base_interval  # 增加计数器
+                    if counter[0] >= interval:
+                        cb()  # 调用回调函数
+                        counter[0] = 0  # 重置计数器
+        except Exception as e:
+            print(e)
+            app_log.info(str(e) + '\n')
+
+    def read_euler(self):
+        # [yaw, pitch, roll]
+        euler = ser_obj.read_euler()
+        if self.save_euler2file_flag:
+            self.euler += euler
+        if len(euler) > 0:
+            self.show_euler(euler[-1][0], euler[-1][1], euler[-1][2])
+
+    def save_euler2file(self):
+        if len(self.euler) == 0:
+            return
+        with open(self.euler_log_file_name, 'a', newline='') as file:
+            writer = csv.writer(file)
+            for v in self.euler:
+                self.euler_log_sn += 1
+                writer.writerow([str(self.euler_log_sn), '%0.3f' % v[0], '%0.3f' % v[1], '%0.3f' % v[2]])
+        self.euler = []
+
+    def show_euler(self, yaw, pitch, roll):
+        if not self.js_cfg['euler_own_cal']:
+            # eulerEdits[0]~[2] ->  pitch, yaw, roll
+            self.eulerEdits[0].setText('%0.3f' % pitch)
+            self.eulerEdits[1].setText('%0.3f' % yaw)
+            self.eulerEdits[2].setText('%0.3f' % roll)
+
+    def show_alg_output(self):
+        try:
+            ag = ser_obj.hw_read_ag_alg_output()
+            agm = ser_obj.hw_read_agm_alg_output()
+
+            t_ag = []
+            if len(ag) > 0:
+                t_ag = ag
+            elif len(agm) > 0:
+                t_ag = agm
+
+            if t_ag:
+                self.sn += 1
+                if self.sn == 1:
+                    self.textEdit.append('******************************')
+                    self.textEdit.append('|    | Yaw   | Pitch  | Roll  |')
+                    self.textEdit.append('------------------------------')
+                    self.textEdit.append('| %d | %0.2f | %0.2f  | %0.2f |' % (self.sn, t_ag[0], t_ag[1], t_ag[2]))
+                else:
+                    self.textEdit.append('-----------------------------')
+                    self.textEdit.append('| %d | %0.2f | %0.2f  | %0.2f |' % (self.sn, t_ag[0], t_ag[1], t_ag[2]))
+                    self.textEdit.append('-----------------------------')
+
+                    diff_yaw = (t_ag[0] - self.t_ag[0] + 180 + 360) % 360 - 180
+                    diff_pitch = (t_ag[1] - self.t_ag[1] + 180 + 360) % 360 - 180
+                    diff_roll = t_ag[2] - self.t_ag[2]
+
+                    self.textEdit.append('|diff| %0.2f | %0.2f  | %0.2f |' % (diff_yaw, diff_pitch, diff_roll))
+                    self.textEdit.append('-----------------------------')
+
+                    # 写标题
+                    if not os.path.exists(self.alg_output_data_file):
+                        with open(self.alg_output_data_file, 'a', newline='') as file:
+                            writer = csv.writer(file)
+                            writer.writerow(['sn', 'yaw_1', 'yaw_2', 'yaw_diff', 'pitch_1', 'pitch_2', 'pitch_diff',
+                                             'roll_1', 'roll_2', 'roll_diff'])
+                    with open(self.alg_output_data_file, 'a', newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
+                                         '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
+                                         '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
+
+                self.textEdit.verticalScrollBar().setValue(self.textEdit.verticalScrollBar().maximum())  # 滚动到底部
+                self.t_ag = t_ag
         except Exception as e:
             print(e)
             app_log.info(str(e))
-
-        self.ser_timer_1s += 1
-        if self.ser_timer_1s > 100:
-            self.ser_timer_1s = 0
-
-            self.ser_hot_plug_timer_detect()
-            self.save_log_to_file(self.log_file_name, ser_obj.hw_read_log())
-
-    def save_euler2file(self, file_name, euler):
-        if not os.path.exists(file_name):
-            with open(file_name, 'w', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow(['yaw_1', 'yaw_1', 'yaw_2', 'yaw_diff', 'pitch_1', 'pitch_2', 'pitch_diff',
-                                 'roll_1', 'roll_2', 'roll_diff'])
-
-        with open(file_name, 'a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
-                             '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
-                             '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
-        # self.euler_log_file_name
-        pass
-        # euler = ser_obj.read_euler()
-
-    def show_alg_output(self):
-        ag = ser_obj.hw_read_ag_alg_output()
-        agm = ser_obj.hw_read_agm_alg_output()
-
-        t_ag = []
-        if len(ag) > 0:
-            t_ag = ag
-        elif len(agm) > 0:
-            t_ag = agm
-
-        if t_ag:
-            self.sn += 1
-            if self.sn == 1:
-                self.textEdit.append('******************************')
-                self.textEdit.append('|    | Yaw   | Pitch  | Roll  |')
-                self.textEdit.append('------------------------------')
-                self.textEdit.append('| %d | %0.2f | %0.2f  | %0.2f |' % (self.sn, t_ag[0], t_ag[1], t_ag[2]))
-            else:
-                self.textEdit.append('-----------------------------')
-                self.textEdit.append('| %d | %0.2f | %0.2f  | %0.2f |' % (self.sn, t_ag[0], t_ag[1], t_ag[2]))
-                self.textEdit.append('-----------------------------')
-
-                diff_yaw = (t_ag[0] - self.t_ag[0] + 180 + 360) % 360 - 180
-                diff_pitch = (t_ag[1] - self.t_ag[1] + 180 + 360) % 360 - 180
-                diff_roll = t_ag[2] - self.t_ag[2]
-
-                self.textEdit.append('|diff| %0.2f | %0.2f  | %0.2f |' % (diff_yaw, diff_pitch, diff_roll))
-                self.textEdit.append('-----------------------------')
-
-                # 写标题
-                if not os.path.exists(self.alg_output_data_file):
-                    with open(self.alg_output_data_file, 'a', newline='') as file:
-                        writer = csv.writer(file)
-                        writer.writerow(['sn', 'yaw_1', 'yaw_2', 'yaw_diff', 'pitch_1', 'pitch_2', 'pitch_diff',
-                                         'roll_1', 'roll_2', 'roll_diff'])
-                with open(self.alg_output_data_file, 'a', newline='') as file:
-                    writer = csv.writer(file)
-                    writer.writerow([str(self.sn), '%0.2f' % self.t_ag[0], '%0.2f' % t_ag[0], '%0.2f' % diff_yaw,
-                                     '%0.2f' % self.t_ag[1], '%0.2f' % t_ag[1], '%0.2f' % diff_pitch,
-                                     '%0.2f' % self.t_ag[2], '%0.2f' % t_ag[2], '%0.2f' % diff_roll])
-
-            self.textEdit.verticalScrollBar().setValue(self.textEdit.verticalScrollBar().maximum())  # 滚动到底部
-            self.t_ag = t_ag
 
     def show_odr(self):
         sensor_odr, uart_odr = ser_obj.read_odr()
@@ -902,13 +986,6 @@ class MyWindow(QWidget):
                 self.combo1.setCurrentIndex(self.com_des_list.index(default_des))
         except ValueError as e:
             print(e)
-
-    def on_euler_data_received(self, yaw, pitch, roll):
-        if not self.js_cfg['euler_own_cal']:
-            # eulerEdits[0]~[2] ->  pitch, yaw, roll
-            self.eulerEdits[0].setText('%0.3f' % pitch)
-            self.eulerEdits[1].setText('%0.3f' % yaw)
-            self.eulerEdits[2].setText('%0.3f' % roll)
 
     def on_dt_data_received(self, dt):
         self.eulerEdits[3].setText('%0.1f Hz' % dt)
@@ -966,7 +1043,8 @@ def hw_error(err):
 
 
 def hw_warn(err):
-    print(err)
+    app_log.info("警告: %s\n" % str(err))
+    print("警告: %s\n" % str(err))
 
 
 if __name__ == '__main__':
