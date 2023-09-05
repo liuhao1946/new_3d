@@ -305,6 +305,7 @@ class Worker(QThread):
                 data_rate = 1000 / (time_diff.time_difference() / data_packets_len)
                 data_packets_len = 0
                 self.dtDataReceived.emit(data_rate)
+                # app_log.info("time_diff, pake len: %d, %d" % (time_diff.time_difference(), data_packets_len))
 
             # time_diff.time_difference(print_flag=True)
             # 暂停一段时间模拟读取数据的过程
@@ -471,6 +472,7 @@ class MyWindow(QWidget):
             self.label2 = QLabel("波特率")
             self.label2.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.label2.setFont(font)
+            self.label1.setFixedWidth(50)
             # self.label2.setFixedWidth(50)
             grid.addWidget(self.label2, 1, 0)
 
@@ -595,6 +597,7 @@ class MyWindow(QWidget):
 
             self.set_ODR = QPushButton("设置传感器ODR(Hz)")
             self.set_ODR.clicked.connect(self.set_sensor_odr)
+            self.set_ODR.setFixedWidth(110)
             self.set_ODR.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             grid.addWidget(self.set_ODR, 12, 8)
 
