@@ -16,6 +16,7 @@ import os
 import requests
 import re
 from collections import defaultdict
+from config import config_file_check
 
 download_test_json = {'id': 326968, 'tag_name': 'v1.2.1',
                       'target_commitish': 'd1ead002c3591d91ae442965d019d76da0cb395f', 'prerelease': False,
@@ -41,7 +42,7 @@ download_test_json = {'id': 326968, 'tag_name': 'v1.2.1',
 
 global ser_obj
 
-CWM_VERSION = 'Cyweemotion 3D(v1.4.0)'
+CWM_VERSION = 'Cyweemotion 3D(v1.5.0)'
 
 package_number = 0
 
@@ -278,7 +279,6 @@ class Worker(QThread):
     def run(self):
         display_clk_3d = 0
         quat_display_clk = 0
-        euler_display_clk = 0
         time_diff = td.TimeDifference()
         data_packets_len = 0
 
@@ -418,11 +418,15 @@ class MyWindow(QWidget):
         self.euler_log_sn = 0
         self.euler = []
 
-        self.reg_timer_cb(100, self.read_euler)
         self.reg_timer_cb(10, self.show_cal_state)
         self.reg_timer_cb(10, self.show_odr)
         self.reg_timer_cb(10, self.show_mf_err)
         self.reg_timer_cb(10, self.show_alg_output)
+        self.reg_timer_cb(100, self.show_acc)
+        self.reg_timer_cb(100, self.show_gyr)
+        self.reg_timer_cb(100, self.show_mag)
+
+        self.reg_timer_cb(100, self.read_euler)
         self.reg_timer_cb(1000, self.ser_hot_plug_timer_detect)
         self.reg_timer_cb(1100, self.save_bin2file)
         self.reg_timer_cb(1000, self.save_euler2file)
@@ -488,7 +492,8 @@ class MyWindow(QWidget):
 
             self.skip_but = QPushButton('一键跳转')
             self.skip_but.clicked.connect(self.skip_to_file)
-            grid.addWidget(self.skip_but, 0, 8)
+            self.skip_but.setFixedWidth(180)
+            grid.addWidget(self.skip_but, 3, 1)
 
             # 第三列
             self.calEdits = []
@@ -520,20 +525,45 @@ class MyWindow(QWidget):
                 grid.addWidget(edit, i, 5)  # change to third column
                 self.quatEdits.append(edit)
 
-            # 第二列
+            # 第二列 - 欧拉角显示
             self.eulerEdits = []
             for i, label in enumerate(["pitch", "yaw", "roll", "U_ODR"]):
                 lbl = QLabel(label)
                 lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 lbl.setFont(font)
                 lbl.setFixedWidth(65)
-                grid.addWidget(lbl, i, 6)  # change to second column
-
+                grid.addWidget(lbl, i, 6)
+                
                 edit = QLineEdit("0.0")
                 edit.setReadOnly(True)
                 edit.setFixedWidth(100)
-                grid.addWidget(edit, i, 7)  # change to second column
+                grid.addWidget(edit, i, 7)
                 self.eulerEdits.append(edit)
+
+            # 添加加速度显示
+            self.accEdits = []
+            for i, label in enumerate(["acc_x", "acc_y", "acc_z"]):
+                edit = QLineEdit(f"{label}: 0.0")
+                edit.setReadOnly(True)
+                edit.setFixedWidth(100)
+                grid.addWidget(edit, i, 8)  
+                self.accEdits.append(edit)
+
+            self.gyrEdits = []
+            for i, label in enumerate(["gyr_x", "gyr_y", "gyr_z"]):
+                edit = QLineEdit(f"{label}: 0.0")
+                edit.setReadOnly(True)
+                edit.setFixedWidth(100)
+                grid.addWidget(edit, i, 9)  
+                self.gyrEdits.append(edit)
+
+            self.magEdits = []
+            for i, label in enumerate(["mag_x", "mag_y", "mag_z"]):
+                edit = QLineEdit(f"{label}: 0.0")
+                edit.setReadOnly(True)
+                edit.setFixedWidth(100)
+                grid.addWidget(edit, i, 10)  
+                self.magEdits.append(edit)
 
             self.checkbox = QCheckBox('接收姿态角', self)
             self.checkbox.setChecked(False)
@@ -657,6 +687,28 @@ class MyWindow(QWidget):
     def closeWindow(self):
         self.close()
 
+    def show_acc(self):
+        acc_data = ser_obj.read_acc()
+        # 将最后一组数据显示在accEdits中
+        if len(acc_data) > 0:
+            self.accEdits[0].setText(f"acc_x: {acc_data[-1][0]:.3f}")
+            self.accEdits[1].setText(f"acc_y: {acc_data[-1][1]:.3f}")
+            self.accEdits[2].setText(f"acc_z: {acc_data[-1][2]:.3f}")
+
+    def show_gyr(self):
+        gyr_data = ser_obj.read_gyr()
+        if len(gyr_data) > 0:
+            self.gyrEdits[0].setText(f"gyr_x: {gyr_data[-1][0]:.3f}")
+            self.gyrEdits[1].setText(f"gyr_y: {gyr_data[-1][1]:.3f}")
+            self.gyrEdits[2].setText(f"gyr_z: {gyr_data[-1][2]:.3f}")
+
+    def show_mag(self):
+        mag_data = ser_obj.read_mag()
+        if len(mag_data) > 0:
+            self.magEdits[0].setText(f"mag_x: {mag_data[-1][0]:.3f}")
+            self.magEdits[1].setText(f"mag_y: {mag_data[-1][1]:.3f}")
+            self.magEdits[2].setText(f"mag_z: {mag_data[-1][2]:.3f}")
+
     def show_sw_version(self):
         sw_ver = ser_obj.hw_read_sw_version()
         if sw_ver != self.sw_version:
@@ -695,8 +747,6 @@ class MyWindow(QWidget):
         cur_s_odr = uint_to_b(int(self.ODR_com.currentText()))
         cur_u_odr = short_to_b(u_odr[self.ODR_com.currentIndex()])
         ser_obj.hw_write(ser_protocol_data([0x02, 0x03], cur_s_odr + cur_u_odr))
-        time.sleep(0.01)
-        ser_obj.hw_write(ser_protocol_data([0x03, 0x03], []))
 
     def get_odr(self):
         ser_obj.hw_write(ser_protocol_data([0x03, 0x03], []))
@@ -719,6 +769,7 @@ class MyWindow(QWidget):
         ser_obj.hw_save_log(state)
         self.save_euler2file_flag = state
         if state:
+            os.makedirs('aaa_log_data', exist_ok=True)
             self.log_file_name = 'aaa_log_data\\' + 'log_' + \
                                  datetime.datetime.now().strftime('%Y-%m-%d_%H_%M_%S') + '.bin '
             self.euler_log_file_name = 'aaa_log_data\\' + 'euler_log_' + \
@@ -798,7 +849,7 @@ class MyWindow(QWidget):
                     quat_open(False)
                     time.sleep(0.03)
 
-                    # 获得校准状态
+                    # 得校准状态
                     get_agm_cal_state()
                     time.sleep(0.03)
                     # 获得ODR
@@ -1056,6 +1107,8 @@ if __name__ == '__main__':
     app_log = log.getLogger('app_log')
 
     ser_obj = bds_ser.BDS_Serial(hw_error, hw_warn, char_format='hex')
+    config_file_check()
+
     app = QApplication(sys.argv)
     ex = MyWindow(ser_obj)
     sys.exit(app.exec_())

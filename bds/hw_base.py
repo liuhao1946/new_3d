@@ -133,6 +133,9 @@ class HardWareBase:
 
         self.xyzw_q = Queue()
         self.euler_q = Queue()
+        self.acc_q = Queue()
+        self.gyro_q = Queue()
+        self.mag_q = Queue()
 
         self.err_q = Queue()
         self.log_q = Queue()
@@ -164,6 +167,7 @@ class HardWareBase:
                 0x0406: self.__fetch_err_inf,
                 0x0101: self.__fetch_sw_version,
                 0x0201: self.__fetch_alg_version,
+                0x0905: self.__fetch_all_data,
               }
 
     def hw_open(self, **kwargs):
@@ -180,6 +184,27 @@ class HardWareBase:
 
     def hw_data_handle(self, s1):
         pass
+
+    def __fetch_all_data(self, data):
+        bytes_data = bytes(data)
+        offset = 0
+        
+        # 使用循环和列表解析来处理所有数据
+        formats = ['fff', 'fff', 'ffff', 'fff', 'ffff']  # 数据格式列表
+        sizes = [12, 12, 16, 12, 16]  # 对应的字节大小
+        results = []
+        
+        for fmt, size in zip(formats, sizes):
+            values = struct.unpack(f'<{fmt}', bytes_data[offset:offset+size])
+            results.append(values)
+            offset += size
+        
+        # 将解包的数据分配给相应的队列
+        self.acc_q.put(results[0])    # acc_x, acc_y, acc_z
+        self.gyro_q.put(results[1])   # gyro_x, gyro_y, gyro_z
+        self.mag_q.put(results[2])    # mag_x, mag_y, mag_z, mag_doe
+        self.euler_q.put(results[3])  # yaw, pitch, roll
+        self.xyzw_q.put(results[4])   # x, y, z, w
 
     def __fetch_err_inf(self, data):
         self.err_q.put(''.join([chr(v) for v in data]))
@@ -262,6 +287,11 @@ class HardWareBase:
 
     def hw_para_init(self):
         self.packet_counter = 0
+        self.acc_q.queue.clear()
+        self.gyro_q.queue.clear()
+        self.mag_q.queue.clear()
+        self.euler_q.queue.clear()
+        self.xyzw_q.queue.clear()
 
     def get_hw_serial_number(self):
         pass
@@ -280,6 +310,33 @@ class HardWareBase:
         while not self.xyzw_q.empty():
             try:
                 data_list.append(self.xyzw_q.get())
+            except queue.Empty:
+                pass
+        return data_list
+    
+    def read_acc(self):
+        data_list = []
+        while not self.acc_q.empty():
+            try:
+                data_list.append(self.acc_q.get())
+            except queue.Empty:
+                pass
+        return data_list
+    
+    def read_gyr(self):
+        data_list = []
+        while not self.gyro_q.empty():
+            try:
+                data_list.append(self.gyro_q.get())
+            except queue.Empty:
+                pass
+        return data_list
+    
+    def read_mag(self):
+        data_list = []
+        while not self.mag_q.empty():
+            try:
+                data_list.append(self.mag_q.get())
             except queue.Empty:
                 pass
         return data_list
